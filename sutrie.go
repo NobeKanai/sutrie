@@ -66,7 +66,6 @@ func BuildSuccinctTrie(dict []string) *SuccinctTrie {
 // and the second return value will be true if the key is matched by the prefix only
 // the third return value will be index after the last prefix match
 // For example, when "xx.yy" in trie, Search("xx.yy.zz") would return false, true, 5
-// Note that when the first return value (exact match) is true, the second value (prefix match) is also true
 func (t *SuccinctTrie) Search(key string) (bool, bool, int) {
 	node := 0 // current node
 	isPrefix := false
