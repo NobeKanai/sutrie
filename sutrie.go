@@ -63,33 +63,36 @@ func BuildSuccinctTrie(dict []string) *SuccinctTrie {
 }
 
 // Search searchs key in trie, the first return value will be true if the key is matched in full
-// and the second return value will be true if the key is matched by the prefix
+// and the second return value will be true if the key is matched by the prefix only
+// the third return value will be index after the last prefix match
+// For example, when "xx.yy" in trie, Search("xx.yy.zz") would return false, true, 5
 // Note that when the first return value (exact match) is true, the second value (prefix match) is also true
-func (t *SuccinctTrie) Search(key string) (bool, bool) {
+func (t *SuccinctTrie) Search(key string) (bool, bool, int) {
 	node := 0 // current node
 	isPrefix := false
+	lastUnmatch := 0
 
 	for i := 0; i < len(key); i++ {
 		firstChild := t.bitmap.selects(node+1) - node
-		if firstChild <= 0 {
-			return false, true // is prefix
+		if firstChild >= len(t.nodes) {
+			return false, true, i // is prefix
 		}
 
 		if t.leaves.getBit(node) {
 			isPrefix = true
+			lastUnmatch = i
 		}
 
 		afterLastChild := t.bitmap.selects(node+2) - node - 1
 		bs := t.binarySearchTrieNodes(key[i], firstChild, afterLastChild)
 		if bs == -1 {
-			return false, false // no next
+			return false, isPrefix, lastUnmatch // no next
 		}
 
 		node = bs
 	}
 
-	isleaf := t.leaves.getBit(node)
-	return isleaf, isleaf || isPrefix
+	return t.leaves.getBit(node), isPrefix, lastUnmatch
 }
 
 func (t *SuccinctTrie) binarySearchTrieNodes(c byte, l, r int) int {
@@ -172,8 +175,5 @@ func (b *bitset) selects(pos int) int {
 		}
 	}
 
-	if b.rank(l+1) != pos {
-		return -1
-	}
 	return l
 }

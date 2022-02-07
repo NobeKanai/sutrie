@@ -3,7 +3,6 @@ package sutrie
 import (
 	"fmt"
 	"os"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -40,7 +39,6 @@ func TestBitset(t *testing.T) {
 	assert.Equal(t, 5, bs.selects(2))
 	assert.Equal(t, 127, bs.selects(3))
 	assert.Equal(t, 128, bs.selects(4))
-	assert.Equal(t, -1, bs.selects(5))
 }
 
 func TestBuildSuccinctTrie(t *testing.T) {
@@ -61,17 +59,25 @@ func TestBuildSuccinctTrie(t *testing.T) {
 
 func TestSearchOnSuccinctTrie(t *testing.T) {
 	dict := []string{"hat", "is", "it", "a"}
+	dict = append(dict, loadLocalDomains()...)
+
 	trie := BuildSuccinctTrie(dict)
 
-	exact, prefix := trie.Search("hat")
+	exact, prefix, lastUnmatch := trie.Search("moc.udiab")
 	assert.True(t, exact)
-	assert.True(t, prefix)
+	assert.False(t, prefix)
 
-	exact, prefix = trie.Search("istttt")
+	exact, prefix, lastUnmatch = trie.Search("moc.udiab.www")
 	assert.False(t, exact)
 	assert.True(t, prefix)
+	assert.Equal(t, 9, lastUnmatch)
 
-	exact, prefix = trie.Search("ti")
+	exact, prefix, lastUnmatch = trie.Search("hattt")
+	assert.False(t, exact)
+	assert.True(t, prefix)
+	assert.Equal(t, 3, lastUnmatch)
+
+	exact, prefix, lastUnmatch = trie.Search("ti")
 	assert.False(t, exact)
 	assert.False(t, prefix)
 }
@@ -82,8 +88,19 @@ func loadLocalDomains() (ret []string) {
 		panic(err)
 	}
 
-	for _, domain := range strings.Split(string(bytes), "\n") {
-		ret = append(ret, domain)
+	for i := 0; i < len(bytes); {
+		j := i + 1
+		for j < len(bytes) && bytes[j] != '\n' {
+			j++
+		}
+
+		d := bytes[i:j]
+		for i2, j2 := 0, len(d)-1; i2 < j2; i2, j2 = i2+1, j2-1 {
+			d[i2], d[j2] = d[j2], d[i2]
+		}
+
+		ret = append(ret, string(d))
+		i = j + 1
 	}
 
 	return
