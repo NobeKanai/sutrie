@@ -63,23 +63,14 @@ func TestSearchOnSuccinctTrie(t *testing.T) {
 
 	trie := BuildSuccinctTrie(dict)
 
-	exact, prefix, lastUnmatch := trie.Search("moc.udiab")
-	assert.True(t, exact)
-	assert.False(t, prefix)
-
-	exact, prefix, lastUnmatch = trie.Search("moc.udiab.www")
-	assert.False(t, exact)
-	assert.True(t, prefix)
+	lastUnmatch := trie.SearchPrefix("moc.udiab")
 	assert.Equal(t, 9, lastUnmatch)
 
-	exact, prefix, lastUnmatch = trie.Search("hattt")
-	assert.False(t, exact)
-	assert.True(t, prefix)
-	assert.Equal(t, 3, lastUnmatch)
+	lastUnmatch = trie.SearchPrefix("moc.udiab.www")
+	assert.Equal(t, 9, lastUnmatch)
 
-	exact, prefix, lastUnmatch = trie.Search("ti")
-	assert.False(t, exact)
-	assert.False(t, prefix)
+	lastUnmatch = trie.SearchPrefix("moc.")
+	assert.Equal(t, 0, lastUnmatch)
 }
 
 func loadLocalDomains() (ret []string) {
@@ -136,6 +127,6 @@ func BenchmarkSearchOnSuccinctTrie(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		trie.Search(given[i%9])
+		trie.SearchPrefix(given[i%9])
 	}
 }

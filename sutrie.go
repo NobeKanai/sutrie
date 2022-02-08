@@ -12,7 +12,7 @@ type SuccinctTrie struct {
 	nodes  []byte
 }
 
-// BuildSuccinctTrie builds a static tree which supports only Search on it
+// BuildSuccinctTrie builds a static trie which supports only searching on it
 func BuildSuccinctTrie(dict []string) *SuccinctTrie {
 	sort.Strings(dict)
 
@@ -62,51 +62,68 @@ func BuildSuccinctTrie(dict []string) *SuccinctTrie {
 	return ret
 }
 
-// Search searchs key in trie, the first return value will be true if the key is matched in full
-// and the second return value will be true if the key is matched by the prefix only
-// the third return value will be index after the last prefix match
-// For example, when "xx.yy" in trie, Search("xx.yy.zz") would return false, true, 5
-func (t *SuccinctTrie) Search(key string) (bool, bool, int) {
+// Search uses the match function to search through the trie level by level and returns true only if the last
+// node it stays on is a leaf. In the match function:
+//
+// orderedCandicates: is the byte sequence represented by all the children of the current node of the trie,
+// it is ordered, you can even do a binary search on it, although it is not necessary at all
+// (because its length is at most 256). In order to save the search overhead,
+// the orderedCandicates here is not a copy of a safe and modifiable value.
+// You must be careful NOT to modify any of its values!
+//
+// prevIsLeaf: if the last matching node is a leaf node during the search, the value of prevIsLeaf will be true.
+//
+// return value: the index of the matching byte, or -1 if you want stop the search
+func (t *SuccinctTrie) Search(match func(orderedCandicates []byte, prevIsLeaf bool) int) bool {
 	node := 0 // current node
-	isPrefix := false
-	lastUnmatch := 0
 
-	for i := 0; i < len(key); i++ {
+	for {
 		firstChild := t.bitmap.selects(node+1) - node
 		if firstChild >= len(t.nodes) {
-			return false, true, i // is prefix
-		}
-
-		if t.leaves.getBit(node) {
-			isPrefix = true
-			lastUnmatch = i
+			break
 		}
 
 		afterLastChild := t.bitmap.selects(node+2) - node - 1
-		bs := t.binarySearchTrieNodes(key[i], firstChild, afterLastChild)
-		if bs == -1 {
-			return false, isPrefix, lastUnmatch // no next
+		idx := match(t.nodes[firstChild:afterLastChild], t.leaves.getBit(node))
+
+		if idx == -1 {
+			break
 		}
 
-		node = bs
+		node = firstChild + idx
 	}
 
-	return t.leaves.getBit(node), isPrefix, lastUnmatch
+	return t.leaves.getBit(node)
 }
 
-func (t *SuccinctTrie) binarySearchTrieNodes(c byte, l, r int) int {
-	for l < r {
-		mid := (l + r) >> 1
-		if t.nodes[mid] >= c {
-			r = mid
-		} else {
-			l = mid + 1
+// SearchPrefix searches the trie for the prefix of the key and returns the last index that does not match.
+// When the match is a complete match, the return value is equal to the length of the key, and similarly,
+// when the return value is 0, it means that there is no match at all.
+// For example, suppose there is an entry "xx.yy" in the trie,
+// when searching for "xx.yy.zz" or "xx.yy" it will return 5, when searching for "xx" or "bb" it will return 0
+func (t *SuccinctTrie) SearchPrefix(key string) int {
+	i := 0
+	lastUnmatch := 0
+	t.Search(func(orderedCandicates []byte, prevIsLeaf bool) int {
+		if prevIsLeaf {
+			lastUnmatch = i
 		}
-	}
-	if t.nodes[l] != c {
+
+		if i >= len(key) {
+			return -1
+		}
+
+		for j := 0; j < len(orderedCandicates); j++ {
+			if orderedCandicates[j] == key[i] {
+				i++
+				return j
+			}
+		}
+
 		return -1
-	}
-	return l
+	})
+
+	return lastUnmatch
 }
 
 type bfsNode struct {
