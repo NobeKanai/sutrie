@@ -62,65 +62,62 @@ func BuildSuccinctTrie(dict []string) *SuccinctTrie {
 	return ret
 }
 
+func (t *SuccinctTrie) search(node int, match func(children []byte, prevIsLeaf bool, next func(int))) {
+	firstChild := t.bitmap.selects(node+1) - node
+	if firstChild >= len(t.nodes) {
+		match([]byte{}, true, func(int) {})
+	}
+
+	afterLastChild := t.bitmap.selects(node+2) - node - 1
+
+	next := func(idx int) {
+		t.search(firstChild+idx, match)
+	}
+
+	match(t.nodes[firstChild:afterLastChild], t.leaves.getBit(node), next)
+	return
+}
+
 // Search uses the match function to search through the trie level by level and returns true only if the last
 // node it stays on is a leaf. In the match function:
 //
-// orderedCandicates: is the byte sequence represented by all the children of the current node of the trie,
+// children: is the byte sequence represented by all the children of the current node of the trie,
 // it is ordered, you can even do a binary search on it, although it is not necessary at all
 // (because its length is at most 256). In order to save the search overhead,
-// the orderedCandicates here is not a copy of a safe and modifiable value.
+// the children here is NOT a copy or, NOT a safe and modifiable value.
 // You must be careful NOT to modify any of its values!
 //
-// prevIsLeaf: if the last matching node is a leaf node during the search, the value of prevIsLeaf will be true.
+// prevIsLeaf: if the last matched node is a leaf node during the search, the value of prevIsLeaf will be true.
 //
-// return value: the index of the matching byte, or -1 if you want stop the search
-func (t *SuccinctTrie) Search(match func(orderedCandicates []byte, prevIsLeaf bool) int) bool {
-	node := 0 // current node
-
-	for {
-		firstChild := t.bitmap.selects(node+1) - node
-		if firstChild >= len(t.nodes) {
-			break
-		}
-
-		afterLastChild := t.bitmap.selects(node+2) - node - 1
-		idx := match(t.nodes[firstChild:afterLastChild], t.leaves.getBit(node))
-
-		if idx == -1 {
-			break
-		}
-
-		node = firstChild + idx
-	}
-
-	return t.leaves.getBit(node)
+// next: call next(index of child) to move to that child node
+func (t *SuccinctTrie) Search(match func(children []byte, prevIsLeaf bool, next func(int))) {
+	t.search(0, match)
 }
 
 // SearchPrefix searches the trie for the prefix of the key and returns the last index that does not match.
-// When the match is a complete match, the return value is equal to the length of the key, and similarly,
+// When the match is a full match, the return value is equal to the length of the key, and similarly,
 // when the return value is 0, it means that there is no match at all.
 // For example, suppose there is an entry "xx.yy" in the trie,
 // when searching for "xx.yy.zz" or "xx.yy" it will return 5, when searching for "xx" or "bb" it will return 0
 func (t *SuccinctTrie) SearchPrefix(key string) int {
 	i := 0
 	lastUnmatch := 0
-	t.Search(func(orderedCandicates []byte, prevIsLeaf bool) int {
+	t.Search(func(children []byte, prevIsLeaf bool, next func(int)) {
 		if prevIsLeaf {
 			lastUnmatch = i
 		}
 
 		if i >= len(key) {
-			return -1
+			return
 		}
 
-		for j := 0; j < len(orderedCandicates); j++ {
-			if orderedCandicates[j] == key[i] {
+		for k, c := range children {
+			if c == key[i] {
 				i++
-				return j
+				next(k)
+				return
 			}
 		}
-
-		return -1
 	})
 
 	return lastUnmatch
