@@ -52,10 +52,10 @@ trie := sutrie.BuildSuccinctTrie(reversed)
 search := func(domain string) bool {
     i := len(domain) - 1
     matched := false
-    trie.Search(func(children []byte, prevIsLeaf bool, next func(int)) {
+    trie.Search(func(children []byte, isLeaf bool, next func(int)) {
         // Define ending condition
         if i < 0 {
-            matched = prevIsLeaf
+            matched = isLeaf
             return
         }
 
