@@ -57,19 +57,18 @@ func TestBuildSuccinctTrie(t *testing.T) {
 	assert.True(t, trie.leaves.getBit(7))
 }
 
-func TestSearchOnSuccinctTrie(t *testing.T) {
+func TestSearchPrefixOnSuccinctTrie(t *testing.T) {
 	dict := []string{"hat", "is", "it", "a"}
-	dict = append(dict, loadLocalDomains()...)
 
 	trie := BuildSuccinctTrie(dict)
 
-	lastUnmatch := trie.SearchPrefix("moc.udiab")
-	assert.Equal(t, 9, lastUnmatch)
+	lastUnmatch := trie.SearchPrefix("hat")
+	assert.Equal(t, 3, lastUnmatch)
 
-	lastUnmatch = trie.SearchPrefix("moc.udiab.www")
-	assert.Equal(t, 9, lastUnmatch)
+	lastUnmatch = trie.SearchPrefix("iss")
+	assert.Equal(t, 2, lastUnmatch)
 
-	lastUnmatch = trie.SearchPrefix("moc.")
+	lastUnmatch = trie.SearchPrefix("ti")
 	assert.Equal(t, 0, lastUnmatch)
 }
 

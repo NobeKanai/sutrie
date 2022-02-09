@@ -62,10 +62,11 @@ func BuildSuccinctTrie(dict []string) *SuccinctTrie {
 	return ret
 }
 
-func (t *SuccinctTrie) search(node int, match func(children []byte, prevIsLeaf bool, next func(int))) {
+func (t *SuccinctTrie) search(node int, match func(children []byte, isLeaf bool, next func(int))) {
 	firstChild := t.bitmap.selects(node+1) - node
 	if firstChild >= len(t.nodes) {
 		match([]byte{}, true, func(int) {})
+		return
 	}
 
 	afterLastChild := t.bitmap.selects(node+2) - node - 1
@@ -87,10 +88,10 @@ func (t *SuccinctTrie) search(node int, match func(children []byte, prevIsLeaf b
 // the children here is NOT a copy or, NOT a safe and modifiable value.
 // You must be careful NOT to modify any of its values!
 //
-// prevIsLeaf: if the last matched node is a leaf node during the search, the value of prevIsLeaf will be true.
+// isLeaf: if current node is a leaf node, the value of isLeaf will be true.
 //
 // next: call next(index of child) to move to that child node
-func (t *SuccinctTrie) Search(match func(children []byte, prevIsLeaf bool, next func(int))) {
+func (t *SuccinctTrie) Search(match func(children []byte, isLeaf bool, next func(int))) {
 	t.search(0, match)
 }
 
@@ -102,8 +103,8 @@ func (t *SuccinctTrie) Search(match func(children []byte, prevIsLeaf bool, next 
 func (t *SuccinctTrie) SearchPrefix(key string) int {
 	i := 0
 	lastUnmatch := 0
-	t.Search(func(children []byte, prevIsLeaf bool, next func(int)) {
-		if prevIsLeaf {
+	t.Search(func(children []byte, isLeaf bool, next func(int)) {
+		if isLeaf {
 			lastUnmatch = i
 		}
 
