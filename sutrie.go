@@ -79,16 +79,16 @@ func (t *SuccinctTrie) search(node int, match func(children []byte, isLeaf bool,
 	return
 }
 
-// Search uses the match function to search through the trie level by level and returns true only if the last
-// node it stays on is a leaf. In the match function:
+// Search uses the match function to traverse through the trie
+// In the match function:
 //
-// children: is the byte sequence represented by all the children of the current node of the trie,
+// children: is the byte sequence represents all the children of the current node of the trie,
 // it is ordered, you can even do a binary search on it, although it is not necessary at all
 // (because its length is at most 256). In order to save the search overhead,
-// the children here is NOT a copy or, NOT a safe and modifiable value.
+// the children here is NOT a copy or, NOT a value that is allowed to be modified,
 // You must be careful NOT to modify any of its values!
 //
-// isLeaf: if current node is a leaf node, the value of isLeaf will be true.
+// isLeaf: if current node is a leaf node, the value of it will be true.
 //
 // next: call next(index of child) to move to that child node
 func (t *SuccinctTrie) Search(match func(children []byte, isLeaf bool, next func(int))) {
