@@ -162,6 +162,8 @@ func (v *SuccinctTrie) UnmarshalBinary(data []byte) error {
 
 	v.bitmap.bits = w.BitmapBits
 	v.leaves.bits = w.LeavesBits
+	v.bitmap.ranks = nil
+	v.leaves.ranks = nil
 	v.nodes = w.Nodes
 	v.size = w.Size
 	return nil
