@@ -66,25 +66,25 @@ func BuildSuccinctTrie(dict []string) *SuccinctTrie {
 	return ret
 }
 
-func (t *SuccinctTrie) search(node int, match func(children []byte, isLeaf bool, next func(int))) {
+func (t *SuccinctTrie) search(node int, walkFunc func(children []byte, isLeaf bool, next func(int))) {
 	firstChild := t.bitmap.selects(node+1) - node
 	if firstChild >= len(t.nodes) {
-		match([]byte{}, true, func(int) {})
+		walkFunc([]byte{}, true, func(int) {})
 		return
 	}
 
 	afterLastChild := t.bitmap.selects(node+2) - node - 1
 
 	next := func(idx int) {
-		t.search(firstChild+idx, match)
+		t.search(firstChild+idx, walkFunc)
 	}
 
-	match(t.nodes[firstChild:afterLastChild], t.leaves.getBit(node), next)
+	walkFunc(t.nodes[firstChild:afterLastChild], t.leaves.getBit(node), next)
 	return
 }
 
-// Search uses the match function to traverse through the trie
-// In the match function:
+// Search uses the walk function to traverse through the trie
+// In the walk function:
 //
 // children: is the byte sequence represents all the children of the current node of the trie,
 // it is ordered, you can even do a binary search on it, although it is not necessary at all
@@ -95,8 +95,8 @@ func (t *SuccinctTrie) search(node int, match func(children []byte, isLeaf bool,
 // isLeaf: if current node is a leaf node, the value of it will be true.
 //
 // next: call next(index of child) to move to that child node
-func (t *SuccinctTrie) Search(match func(children []byte, isLeaf bool, next func(int))) {
-	t.search(0, match)
+func (t *SuccinctTrie) Search(walkFunc func(children []byte, isLeaf bool, next func(int))) {
+	t.search(0, walkFunc)
 }
 
 // SearchPrefix searches the trie for the prefix of the key and returns the last index that does not match.
