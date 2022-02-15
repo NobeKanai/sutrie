@@ -1,6 +1,7 @@
 package sutrie
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"testing"
@@ -55,12 +56,45 @@ func TestBuildSuccinctTrie(t *testing.T) {
 	assert.True(t, trie.leaves.getBit(5))
 	assert.True(t, trie.leaves.getBit(6))
 	assert.True(t, trie.leaves.getBit(7))
+
+	assert.Equal(t, 4, trie.size)
 }
 
 func TestSearchPrefixOnSuccinctTrie(t *testing.T) {
 	dict := []string{"hat", "is", "it", "a"}
 
 	trie := BuildSuccinctTrie(dict)
+
+	lastUnmatch := trie.SearchPrefix("hat")
+	assert.Equal(t, 3, lastUnmatch)
+
+	lastUnmatch = trie.SearchPrefix("iss")
+	assert.Equal(t, 2, lastUnmatch)
+
+	lastUnmatch = trie.SearchPrefix("ti")
+	assert.Equal(t, 0, lastUnmatch)
+}
+
+func TestMarshalBinary(t *testing.T) {
+	var buf bytes.Buffer
+
+	dict := []string{"hat", "is", "it", "a"}
+	trie := BuildSuccinctTrie(dict)
+
+	bin, err := trie.MarshalBinary()
+	if err != nil {
+		assert.FailNow(t, "failed to marshal trie to binary")
+	}
+
+	buf.Write(bin)
+
+	var decTrie SuccinctTrie
+	err = decTrie.UnmarshalBinary(buf.Bytes())
+	if err != nil {
+		assert.FailNow(t, "failed to unmarshal binary to trie")
+	}
+
+	assert.Equal(t, 4, decTrie.size)
 
 	lastUnmatch := trie.SearchPrefix("hat")
 	assert.Equal(t, 3, lastUnmatch)

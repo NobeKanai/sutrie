@@ -1,7 +1,9 @@
 package sutrie
 
 import (
+	"bytes"
 	"container/list"
+	"encoding/gob"
 	"math/bits"
 	"sort"
 )
@@ -10,6 +12,7 @@ type SuccinctTrie struct {
 	bitmap bitset
 	leaves bitset
 	nodes  []byte
+	size   int
 }
 
 // BuildSuccinctTrie builds a static trie which supports only searching on it
@@ -48,6 +51,7 @@ func BuildSuccinctTrie(dict []string) *SuccinctTrie {
 			// touch bottom, this is a leaf
 			if len(dict[i]) == cur.depth+1 {
 				ret.leaves.setBit(len(ret.nodes)-1, true)
+				ret.size++
 			}
 
 			// now add the next level node
@@ -122,6 +126,45 @@ func (t *SuccinctTrie) SearchPrefix(key string) int {
 	})
 
 	return lastUnmatch
+}
+
+// Size returns number of leaves in trie
+func (t *SuccinctTrie) Size() int {
+	return t.size
+}
+
+type wrapSuccinctTrie struct {
+	BitmapBits []uint64
+	LeavesBits []uint64
+	Nodes      []byte
+	Size       int
+}
+
+func (v *SuccinctTrie) MarshalBinary() ([]byte, error) {
+	w := wrapSuccinctTrie{v.bitmap.bits, v.leaves.bits, v.nodes, v.size}
+
+	var buf bytes.Buffer
+	enc := gob.NewEncoder(&buf)
+	if err := enc.Encode(w); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+func (v *SuccinctTrie) UnmarshalBinary(data []byte) error {
+	w := wrapSuccinctTrie{}
+
+	reader := bytes.NewReader(data)
+	dec := gob.NewDecoder(reader)
+	if err := dec.Decode(&w); err != nil {
+		return err
+	}
+
+	v.bitmap.bits = w.BitmapBits
+	v.leaves.bits = w.LeavesBits
+	v.nodes = w.Nodes
+	v.size = w.Size
+	return nil
 }
 
 type bfsNode struct {
