@@ -81,15 +81,13 @@ func TestMarshalBinary(t *testing.T) {
 	dict := []string{"hat", "is", "it", "a"}
 	trie := BuildSuccinctTrie(dict)
 
-	bin, err := trie.MarshalBinary()
+	err := trie.Marshal(&buf)
 	if err != nil {
 		assert.FailNow(t, "failed to marshal trie to binary")
 	}
 
-	buf.Write(bin)
-
 	var decTrie SuccinctTrie
-	err = decTrie.UnmarshalBinary(buf.Bytes())
+	err = decTrie.Unmarshal(&buf)
 	if err != nil {
 		assert.FailNow(t, "failed to unmarshal binary to trie")
 	}

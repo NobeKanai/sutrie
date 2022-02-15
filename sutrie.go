@@ -1,9 +1,9 @@
 package sutrie
 
 import (
-	"bytes"
 	"container/list"
 	"encoding/gob"
+	"io"
 	"math/bits"
 	"sort"
 )
@@ -140,21 +140,16 @@ type wrapSuccinctTrie struct {
 	Size       int
 }
 
-func (v *SuccinctTrie) MarshalBinary() ([]byte, error) {
+func (v *SuccinctTrie) Marshal(writer io.Writer) error {
 	w := wrapSuccinctTrie{v.bitmap.bits, v.leaves.bits, v.nodes, v.size}
 
-	var buf bytes.Buffer
-	enc := gob.NewEncoder(&buf)
-	if err := enc.Encode(w); err != nil {
-		return nil, err
-	}
-	return buf.Bytes(), nil
+	enc := gob.NewEncoder(writer)
+	return enc.Encode(w)
 }
 
-func (v *SuccinctTrie) UnmarshalBinary(data []byte) error {
+func (v *SuccinctTrie) Unmarshal(reader io.Reader) error {
 	w := wrapSuccinctTrie{}
 
-	reader := bytes.NewReader(data)
 	dec := gob.NewDecoder(reader)
 	if err := dec.Decode(&w); err != nil {
 		return err
