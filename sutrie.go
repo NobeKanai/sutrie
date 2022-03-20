@@ -28,6 +28,11 @@ func BuildSuccinctTrie(dict []string) *SuccinctTrie {
 		nodes: make([]byte, 1),
 	}
 
+	type bfsNode struct {
+		l, r  int
+		depth int
+	}
+
 	zeroIdx := 1 // well this is actually one index cause that's easier
 	queue := []bfsNode{{0, len(dict), 0}}
 
@@ -211,11 +216,6 @@ func (v *SuccinctTrie) Unmarshal(reader io.Reader) error {
 
 	v.bitmap.initRanks()
 	return nil
-}
-
-type bfsNode struct {
-	l, r  int
-	depth int
 }
 
 // --- bitset ---
