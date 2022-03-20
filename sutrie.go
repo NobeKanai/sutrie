@@ -147,10 +147,10 @@ func (t *SuccinctTrie) Search(walkFunc func(children []byte, isLeaf bool, next f
 		stk = stk[:len(stk)-1]
 
 		firstChild = t.bitmap.selects(node+1) - node
-		afterLastChild = t.bitmap.selects(node+2) - node - 1
 		if firstChild >= len(t.nodes) {
 			walkFunc(nil, true, nil)
 		} else {
+			afterLastChild = t.bitmap.selects(node+2) - node - 1
 			walkFunc(t.nodes[firstChild:afterLastChild], t.leaves.getBit(node), next)
 		}
 	}
