@@ -117,45 +117,6 @@ func (t *SuccinctTrie) Next(n Node, childIdx int) Node {
 	}
 }
 
-// Search [DEPRECATED] uses the walk function to traverse through the trie
-// In the walk function:
-//
-// children: is the byte sequence represents all the children of the current node of the trie,
-// it is ordered, you can even do a binary search on it, although it is not necessary at all
-// (because its length is at most 256). In order to save the search overhead,
-// the children here is NOT a copy or, NOT a value that is allowed to be modified,
-// You must be careful NOT to modify any of its values!
-//
-// isLeaf: if current node is a leaf node, the value of it will be true.
-//
-// next: call next(index of child) to move to that child node
-func (t *SuccinctTrie) Search(walkFunc func(children []byte, isLeaf bool, next func(int))) {
-	var (
-		firstChild     int
-		afterLastChild int
-		node           int
-	)
-
-	stk := []int{0}
-
-	next := func(idx int) {
-		stk = append(stk, firstChild+idx)
-	}
-
-	for len(stk) > 0 {
-		node = stk[len(stk)-1]
-		stk = stk[:len(stk)-1]
-
-		firstChild = t.bitmap.selects(node+1) - node
-		if firstChild >= len(t.nodes) {
-			walkFunc(nil, true, nil)
-		} else {
-			afterLastChild = t.bitmap.selects(node+2) - node - 1
-			walkFunc(t.nodes[firstChild:afterLastChild], t.leaves.getBit(node), next)
-		}
-	}
-}
-
 // SearchPrefix searches the trie for the prefix of the key and returns the last index that does not match.
 // When the match is a full match, the return value is equal to the length of the key, and similarly,
 // when the return value is 0, it means that there is no match at all.

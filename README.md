@@ -1,6 +1,6 @@
 # Succinct Trie
 
-A memory-efficient trie for testing the existence/prefixes of string only(for now).
+A memory-efficient trie for testing the existence/prefixes of string only.
 
 
 
@@ -31,72 +31,56 @@ println(lastUnmatch) // will print 0, because neither "ha" nor its prefix (that 
 
 ### Advanced Usage
 
-You can customize trie's traversal process in a depth-first search manner. For example, define a domain name lookup rule: `*.example.com` matches `www.example.com` and `xxx.example.com` but not `xxx.www.example.com` and `example.com`
+You can customize trie's traversal process. For example, define a domain name lookup rule: `*.example.com` matches `www.example.com` and `xxx.example.com` but not `xxx.www.example.com` and `example.com`
 
 ```go
-// First build a trie with reversed domains because we usually match domains backwards
-domains := []string{"*.example.com", "google.*"}
-
-reversed := make([]string, len(domains))
-for i, p := range domains {
-    bytes := []byte(p)
-    for i2, j := 0, len(bytes)-1; i2 < j; i2, j = i2+1, j-1 {
-        bytes[i2], bytes[j] = bytes[j], bytes[i2]
-    }
-    reversed[i] = string(bytes)
+func reverse(s string) string {
+        bytes := []byte(s)
+        for i, j := 0, len(bytes)-1; i < j; i, j = i+1, j-1 {
+                bytes[i], bytes[j] = bytes[j], bytes[i]
+        }
+        return string(bytes)
 }
 
-trie := sutrie.BuildSuccinctTrie(reversed)
+func main() {
+        // First build a trie with reversed domains because we usually match domains backwards
+        domains := []string{reverse("*.example.com"), reverse("google.*")}
+        trie := sutrie.BuildSuccinctTrie(domains)
 
-// Then let's define the matching method
-search := func(domain string) bool {
-    i := len(domain) - 1
-    matched := false
-    trie.Search(func(children []byte, isLeaf bool, next func(int)) {
-        // Define ending condition
-        if i < 0 {
-            matched = isLeaf
-            return
+        // Then let's define the matching rule
+        var search func(node sutrie.Node, domain string, idx int) bool
+        search = func(node sutrie.Node, domain string, idx int) (matched bool) {
+                if idx < 0 {
+                        return node.Leaf
+                }
+
+                for k, c := range node.Children {
+                        if c == domain[idx] {
+                                matched = search(trie.Next(node, k), domain, idx-1)
+                        } else if c == '*' {
+                                tmp := idx
+                                for tmp >= 0 && domain[tmp] != '.' {
+                                        tmp--
+                                }
+                                matched = search(trie.Next(node, k), domain, tmp)
+                        }
+
+                        if matched {
+                                return true
+                        }
+                }
+                return
         }
 
-        for k, c := range children {
-            if c == '*' {
-                tmp := i
-                for i >= 0 && domain[i] != '.' {
-                    i--
-                }
-
-                next(k)
-                if matched {
-                    return
-                }
-
-                i = tmp
-            } else if c == domain[i] {
-                i--
-
-                next(k)
-                if matched {
-                    return
-                }
-
-                i++
-            }
+        Search := func(domain string) bool {
+                return search(trie.Root(), domain, len(domain)-1)
         }
-    })
 
-    return matched
+        println(Search("www.example.com"))     // true
+        println(Search("xxx.example.com"))     // true
+        println(Search("xxx.www.example.com")) // false
+        println(Search("example.com"))         // false
+        println(Search("google.io"))           // true
 }
-
-println(search("www.example.com")) // true
-println(search("xxx.example.com")) // true
-println(search("xxx.www.example.com")) // false
-println(search("example.com")) // false
-println(search("google.io")) // true
 ```
-
-
-
-
-
 
