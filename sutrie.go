@@ -66,23 +66,6 @@ func BuildSuccinctTrie(dict []string) *SuccinctTrie {
 	return ret
 }
 
-func (t *SuccinctTrie) search(node int, walkFunc func(children []byte, isLeaf bool, next func(int))) {
-	firstChild := t.bitmap.selects(node+1) - node
-	if firstChild >= len(t.nodes) {
-		walkFunc(nil, true, func(int) {})
-		return
-	}
-
-	afterLastChild := t.bitmap.selects(node+2) - node - 1
-
-	next := func(idx int) {
-		t.search(firstChild+idx, walkFunc)
-	}
-
-	walkFunc(t.nodes[firstChild:afterLastChild], t.leaves.getBit(node), next)
-	return
-}
-
 // Search uses the walk function to traverse through the trie
 // In the walk function:
 //
@@ -96,7 +79,31 @@ func (t *SuccinctTrie) search(node int, walkFunc func(children []byte, isLeaf bo
 //
 // next: call next(index of child) to move to that child node
 func (t *SuccinctTrie) Search(walkFunc func(children []byte, isLeaf bool, next func(int))) {
-	t.search(0, walkFunc)
+	var (
+		firstChild     int
+		afterLastChild int
+		node           int
+	)
+
+	stk := []int{0}
+
+	next := func(idx int) {
+		stk = append(stk, firstChild+idx)
+	}
+
+	for len(stk) > 0 {
+		node = stk[len(stk)-1]
+		stk = stk[:len(stk)-1]
+
+		firstChild = t.bitmap.selects(node+1) - node
+		if firstChild >= len(t.nodes) {
+			walkFunc(nil, true, nil)
+		} else {
+			afterLastChild = t.bitmap.selects(node+2) - node - 1
+			walkFunc(t.nodes[firstChild:afterLastChild], t.leaves.getBit(node), next)
+		}
+
+	}
 }
 
 // SearchPrefix searches the trie for the prefix of the key and returns the last index that does not match.
