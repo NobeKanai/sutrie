@@ -62,14 +62,14 @@ func BuildSuccinctTrie(dict []string) *SuccinctTrie {
 	}
 
 	ret.bitmap.setBit(zeroIdx, true)
-
+	ret.bitmap.initRanks()
 	return ret
 }
 
 func (t *SuccinctTrie) search(node int, walkFunc func(children []byte, isLeaf bool, next func(int))) {
 	firstChild := t.bitmap.selects(node+1) - node
 	if firstChild >= len(t.nodes) {
-		walkFunc([]byte{}, true, func(int) {})
+		walkFunc(nil, true, func(int) {})
 		return
 	}
 
@@ -161,6 +161,8 @@ func (v *SuccinctTrie) Unmarshal(reader io.Reader) error {
 	v.leaves.ranks = nil
 	v.nodes = w.Nodes
 	v.size = w.Size
+
+	v.bitmap.initRanks()
 	return nil
 }
 
@@ -207,10 +209,6 @@ func (b *bitset) initRanks() {
 
 // rank does not include last bit
 func (b *bitset) rank(pos int) int {
-	if b.ranks == nil {
-		b.initRanks()
-	}
-
 	if pos>>6 >= len(b.ranks)-1 {
 		return int(b.ranks[len(b.ranks)-1])
 	}

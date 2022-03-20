@@ -28,6 +28,8 @@ func TestBitset(t *testing.T) {
 	bs.setBit(128, true)
 	bs.setBit(127, true)
 
+	bs.initRanks()
+
 	// 4,5,127,128
 	assert.Equal(t, 1, bs.rank(5))
 	assert.Equal(t, 2, bs.rank(6))
