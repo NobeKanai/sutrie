@@ -15,6 +15,12 @@ type SuccinctTrie struct {
 	size   int
 }
 
+type Node struct {
+	firstChild int
+	Children   []byte
+	Leaf       bool
+}
+
 // BuildSuccinctTrie builds a static trie which supports only searching on it
 func BuildSuccinctTrie(dict []string) *SuccinctTrie {
 	sort.Strings(dict)
@@ -66,7 +72,50 @@ func BuildSuccinctTrie(dict []string) *SuccinctTrie {
 	return ret
 }
 
-// Search uses the walk function to traverse through the trie
+// Root returns root node of trie
+func (t *SuccinctTrie) Root() Node {
+	firstChild := t.bitmap.selects(1)
+	if firstChild >= len(t.nodes) {
+		return Node{
+			Children: nil,
+			Leaf:     false,
+		}
+	} else {
+		afterLastChild := t.bitmap.selects(2) - 1
+		return Node{
+			firstChild: firstChild,
+			Children:   t.nodes[firstChild:afterLastChild],
+			Leaf:       false,
+		}
+	}
+}
+
+// Next moves to children of node n. childIdx is the index of n.Children, which should point
+// to the byte you want to move to.
+func (t *SuccinctTrie) Next(n Node, childIdx int) Node {
+	if childIdx >= len(n.Children) {
+		panic("index outbound")
+	}
+
+	node := n.firstChild + childIdx
+
+	firstChild := t.bitmap.selects(node+1) - node
+	if firstChild >= len(t.nodes) {
+		return Node{
+			Children: nil,
+			Leaf:     true,
+		}
+	} else {
+		afterLastChild := t.bitmap.selects(node+2) - node - 1
+		return Node{
+			firstChild: firstChild,
+			Children:   t.nodes[firstChild:afterLastChild],
+			Leaf:       t.leaves.getBit(node),
+		}
+	}
+}
+
+// Search [DEPRECATED] uses the walk function to traverse through the trie
 // In the walk function:
 //
 // children: is the byte sequence represents all the children of the current node of the trie,
@@ -96,13 +145,12 @@ func (t *SuccinctTrie) Search(walkFunc func(children []byte, isLeaf bool, next f
 		stk = stk[:len(stk)-1]
 
 		firstChild = t.bitmap.selects(node+1) - node
+		afterLastChild = t.bitmap.selects(node+2) - node - 1
 		if firstChild >= len(t.nodes) {
 			walkFunc(nil, true, nil)
 		} else {
-			afterLastChild = t.bitmap.selects(node+2) - node - 1
 			walkFunc(t.nodes[firstChild:afterLastChild], t.leaves.getBit(node), next)
 		}
-
 	}
 }
 
@@ -111,28 +159,23 @@ func (t *SuccinctTrie) Search(walkFunc func(children []byte, isLeaf bool, next f
 // when the return value is 0, it means that there is no match at all.
 // For example, suppose there is an entry "xx.yy" in the trie,
 // when searching for "xx.yy.zz" or "xx.yy" it will return 5, when searching for "xx" or "bb" it will return 0
-func (t *SuccinctTrie) SearchPrefix(key string) int {
-	i := 0
-	lastUnmatch := 0
-	t.Search(func(children []byte, isLeaf bool, next func(int)) {
-		if isLeaf {
-			lastUnmatch = i
-		}
-
-		if i >= len(key) {
-			return
-		}
-
-		for k, c := range children {
+func (t *SuccinctTrie) SearchPrefix(key string) (lastUnmatch int) {
+	cur := t.Root()
+	for i := 0; i < len(key); i++ {
+		for k, c := range cur.Children {
 			if c == key[i] {
-				i++
-				next(k)
-				return
+				cur = t.Next(cur, k)
+				if cur.Leaf {
+					lastUnmatch = i + 1
+				}
+				goto CONTINUE
 			}
 		}
-	})
+		break
+	CONTINUE:
+	}
 
-	return lastUnmatch
+	return
 }
 
 // Size returns number of leaves in trie
