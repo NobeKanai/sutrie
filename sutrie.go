@@ -1,7 +1,6 @@
 package sutrie
 
 import (
-	"container/list"
 	"encoding/gob"
 	"io"
 	"math/bits"
@@ -30,12 +29,11 @@ func BuildSuccinctTrie(dict []string) *SuccinctTrie {
 	}
 
 	zeroIdx := 1 // well this is actually one index cause that's easier
-	queue := list.New()
-	queue.PushBack(bfsNode{0, len(dict), 0})
+	queue := []bfsNode{{0, len(dict), 0}}
 
-	for queue.Len() > 0 {
-		cur := queue.Front().Value.(bfsNode)
-		queue.Remove(queue.Front())
+	for len(queue) > 0 {
+		cur := queue[0]
+		queue = queue[1:]
 
 		ret.bitmap.setBit(zeroIdx, true)
 		zeroIdx++
@@ -60,8 +58,7 @@ func BuildSuccinctTrie(dict []string) *SuccinctTrie {
 				ret.size++
 			}
 
-			// now add the next level node
-			queue.PushBack(bfsNode{i, r, cur.depth + 1})
+			queue = append(queue, bfsNode{i, r, cur.depth + 1})
 			i = r
 			zeroIdx++
 		}
