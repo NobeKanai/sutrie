@@ -15,9 +15,11 @@ type SuccinctTrie struct {
 }
 
 type Node struct {
+	Children []byte
+	Leaf     bool
+
+	trie       *SuccinctTrie
 	firstChild int
-	Children   []byte
-	Leaf       bool
 }
 
 // BuildSuccinctTrie builds a static trie which supports only searching on it
@@ -81,6 +83,7 @@ func (t *SuccinctTrie) Root() Node {
 		return Node{
 			Children: nil,
 			Leaf:     false,
+			trie:     t,
 		}
 	} else {
 		afterLastChild := t.bitmap.selects(2) - 1
@@ -88,33 +91,79 @@ func (t *SuccinctTrie) Root() Node {
 			firstChild: firstChild,
 			Children:   t.nodes[firstChild:afterLastChild],
 			Leaf:       false,
+			trie:       t,
 		}
 	}
 }
 
-// Next moves to children of node n. childIdx is the index of n.Children, which should point
-// to the byte you want to move to.
-func (t *SuccinctTrie) Next(n Node, childIdx int) Node {
-	if childIdx >= len(n.Children) {
-		panic("index outbound")
+// Exists returns the validity of the current node.
+func (n Node) Exists() bool {
+	return n.trie != nil
+}
+
+// Next is equivalent to calling NextByte(n.Children[childIdx]), but it is faster.
+// This means that if you already know the index of the next child node, you should call this function instead of NextByte.
+func (n Node) Next(childIdx int) Node {
+	if childIdx >= len(n.Children) || childIdx < 0 {
+		return Node{}
 	}
 
 	node := n.firstChild + childIdx
 
-	firstChild := t.bitmap.selects(node+1) - node
-	if firstChild >= len(t.nodes) {
+	firstChild := n.trie.bitmap.selects(node+1) - node
+	if firstChild >= len(n.trie.nodes) {
 		return Node{
 			Children: nil,
 			Leaf:     true,
+			trie:     n.trie,
 		}
 	} else {
-		afterLastChild := t.bitmap.selects(node+2) - node - 1
+		afterLastChild := n.trie.bitmap.selects(node+2) - node - 1
 		return Node{
 			firstChild: firstChild,
-			Children:   t.nodes[firstChild:afterLastChild],
-			Leaf:       t.leaves.getBit(node),
+			Children:   n.trie.nodes[firstChild:afterLastChild],
+			Leaf:       n.trie.leaves.getBit(node),
+			trie:       n.trie,
 		}
 	}
+}
+
+// NextByte returns the next node corresponding to the byte b in the trie from the current node.
+// Note that the returned node may be invalid. You must call Exists to determine its validity.
+func (n Node) NextByte(b byte) Node {
+	return n.Next(indexByte(n.Children, b))
+}
+
+func (n Node) Search(s string) Node {
+	for i := 0; i < len(s) && n.Exists(); i++ {
+		n = n.NextByte(s[i])
+	}
+	return n
+}
+
+func indexByte(children []byte, b byte) int {
+	if len(children) < 13 {
+		for i := 0; i < len(children); i++ {
+			if children[i] == b {
+				return i
+			}
+		}
+	} else {
+		l, r := 0, len(children)-1
+		for l <= r {
+			k := (l + r) >> 1
+			if children[k] == b {
+				return k
+			}
+			if children[k] > b {
+				r = k - 1
+			} else {
+				l = k + 1
+			}
+		}
+	}
+
+	return -1
 }
 
 // SearchPrefix searches the trie for the prefix of the key and returns the last index that does not match.
@@ -122,20 +171,16 @@ func (t *SuccinctTrie) Next(n Node, childIdx int) Node {
 // when the return value is 0, it means that there is no match at all.
 // For example, suppose there is an entry "xx.yy" in the trie,
 // when searching for "xx.yy.zz" or "xx.yy" it will return 5, when searching for "xx" or "bb" it will return 0
-func (t *SuccinctTrie) SearchPrefix(key string) (lastUnmatch int) {
-	cur := t.Root()
+func (cur Node) SearchPrefix(key string) (lastUnmatch int) {
 	for i := 0; i < len(key); i++ {
-		for k, c := range cur.Children {
-			if c == key[i] {
-				cur = t.Next(cur, k)
-				if cur.Leaf {
-					lastUnmatch = i + 1
-				}
-				goto CONTINUE
+		if k := indexByte(cur.Children, key[i]); k != -1 {
+			cur = cur.Next(k)
+			if cur.Leaf {
+				lastUnmatch = i + 1
 			}
+		} else {
+			break
 		}
-		break
-	CONTINUE:
 	}
 
 	return
@@ -179,8 +224,6 @@ func (v *SuccinctTrie) Unmarshal(reader io.Reader) error {
 	return nil
 }
 
-// --- bitset ---
-
 type bitset struct {
 	bits  []uint64
 	ranks []int32
@@ -199,7 +242,7 @@ func (b *bitset) setBit(pos int, value bool) {
 	b.ranks = nil
 }
 
-func (b *bitset) getBit(pos int) bool {
+func (b bitset) getBit(pos int) bool {
 	if pos>>6 >= len(b.bits) {
 		return false
 	}
@@ -215,23 +258,23 @@ func (b *bitset) initRanks() {
 	}
 }
 
-// rank does not include last bit
-func (b *bitset) rank(pos int) int {
-	if pos>>6 >= len(b.ranks)-1 {
+func (b bitset) rank(pos int) int {
+	if pos>>6 >= len(b.bits) {
 		return int(b.ranks[len(b.ranks)-1])
 	}
 
-	return int(b.ranks[pos>>6]) + bits.OnesCount64(b.bits[pos>>6]&(uint64(1)<<(pos&63)-1))
+	return int(b.ranks[pos>>6]) + bits.OnesCount64(b.bits[pos>>6]&(uint64(1)<<(pos&63+1)-1))
 }
 
-func (b *bitset) selects(pos int) int {
+func (b bitset) selects(pos int) int {
 	l, r := 0, len(b.bits)<<6-1
 	for l < r {
-		mid := (l + r + 1) >> 1
-		if b.rank(mid) < pos {
-			l = mid
+		mid := (l + r) >> 1
+		rank := int(b.ranks[mid>>6]) + bits.OnesCount64(b.bits[mid>>6]&(uint64(1)<<(mid&63+1)-1))
+		if rank < pos {
+			l = mid + 1
 		} else {
-			r = mid - 1
+			r = mid
 		}
 	}
 

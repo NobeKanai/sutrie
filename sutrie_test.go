@@ -31,13 +31,12 @@ func TestBitset(t *testing.T) {
 	bs.initRanks()
 
 	// 4,5,127,128
-	assert.Equal(t, 1, bs.rank(5))
-	assert.Equal(t, 2, bs.rank(6))
-	assert.Equal(t, 3, bs.rank(128))
-	assert.Equal(t, 4, bs.rank(129))
+	assert.Equal(t, 1, bs.rank(4))
+	assert.Equal(t, 2, bs.rank(5))
+	assert.Equal(t, 3, bs.rank(127))
+	assert.Equal(t, 4, bs.rank(128))
 	assert.Equal(t, 4, bs.rank(100000))
 
-	assert.Equal(t, 0, bs.selects(0))
 	assert.Equal(t, 4, bs.selects(1))
 	assert.Equal(t, 5, bs.selects(2))
 	assert.Equal(t, 127, bs.selects(3))
@@ -65,7 +64,7 @@ func TestBuildSuccinctTrie(t *testing.T) {
 	assert.Equal(t, 3, len(node.Children))
 	assert.False(t, node.Leaf)
 
-	node = trie.Next(node, 0)
+	node = node.Next(0)
 	assert.Equal(t, 0, len(node.Children))
 	assert.True(t, node.Leaf)
 }
@@ -73,7 +72,7 @@ func TestBuildSuccinctTrie(t *testing.T) {
 func TestSearchPrefixOnSuccinctTrie(t *testing.T) {
 	dict := []string{"hat", "is", "it", "a"}
 
-	trie := BuildSuccinctTrie(dict)
+	trie := BuildSuccinctTrie(dict).Root()
 
 	lastUnmatch := trie.SearchPrefix("hat")
 	assert.Equal(t, 3, lastUnmatch)
@@ -88,7 +87,7 @@ func TestSearchPrefixOnSuccinctTrie(t *testing.T) {
 func TestMarshalBinary(t *testing.T) {
 	var buf bytes.Buffer
 
-	dict := []string{"hat", "is", "it", "a"}
+	dict := []string{"hat", "is", "it", "a", "中文"}
 	trie := BuildSuccinctTrie(dict)
 
 	err := trie.Marshal(&buf)
@@ -102,15 +101,17 @@ func TestMarshalBinary(t *testing.T) {
 		assert.FailNow(t, "failed to unmarshal binary to trie")
 	}
 
-	assert.Equal(t, 4, decTrie.size)
+	assert.Equal(t, 5, decTrie.size)
 
-	lastUnmatch := trie.SearchPrefix("hat")
+	root := trie.Root()
+
+	lastUnmatch := root.SearchPrefix("hat")
 	assert.Equal(t, 3, lastUnmatch)
 
-	lastUnmatch = trie.SearchPrefix("iss")
+	lastUnmatch = root.SearchPrefix("iss")
 	assert.Equal(t, 2, lastUnmatch)
 
-	lastUnmatch = trie.SearchPrefix("ti")
+	lastUnmatch = root.SearchPrefix("ti")
 	assert.Equal(t, 0, lastUnmatch)
 }
 
@@ -151,7 +152,7 @@ func BenchmarkBuildSuccinctTrie(b *testing.B) {
 
 func BenchmarkSearchOnSuccinctTrie(b *testing.B) {
 	domains := loadLocalDomains()
-	trie := BuildSuccinctTrie(domains)
+	trie := BuildSuccinctTrie(domains).Root()
 
 	given := []string{
 		"xxx.twitter.com",
@@ -161,13 +162,16 @@ func BenchmarkSearchOnSuccinctTrie(b *testing.B) {
 		"cdn.ark.qq.com",
 		"google.com",
 		"img.yandex.com",
-		"fuuxkxkfjsdfsdf.hinatarin.com",
+		"fuuxkxkfjsdfsdf.ddddddd.com",
 		"www.example.com",
+		"a.b.c.d.e.f.g.h",
+		"abc.def",
+		"a.b.c.d.e.f.google.com",
 	}
 
 	b.ResetTimer()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		trie.SearchPrefix(given[i%9])
+		trie.SearchPrefix(given[i%12])
 	}
 }
