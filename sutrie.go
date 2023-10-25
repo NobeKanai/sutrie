@@ -4,6 +4,7 @@ import (
 	"encoding/gob"
 	"io"
 	"math/bits"
+	"runtime"
 	"sort"
 )
 
@@ -15,11 +16,10 @@ type SuccinctTrie struct {
 }
 
 type Node struct {
-	Children []byte
-	Leaf     bool
-
-	trie       *SuccinctTrie
-	firstChild int
+	trie           *SuccinctTrie
+	firstChild     int
+	afterLastChild int
+	leaf           bool
 }
 
 // BuildSuccinctTrie builds a static trie which supports only searching on it
@@ -73,6 +73,8 @@ func BuildSuccinctTrie(dict []string) *SuccinctTrie {
 
 	ret.bitmap.setBit(zeroIdx, true)
 	ret.bitmap.initRanks()
+
+	defer runtime.GC()
 	return ret
 }
 
@@ -81,17 +83,16 @@ func (t *SuccinctTrie) Root() Node {
 	firstChild := t.bitmap.selects(1)
 	if firstChild >= len(t.nodes) {
 		return Node{
-			Children: nil,
-			Leaf:     false,
-			trie:     t,
+			leaf: false,
+			trie: t,
 		}
 	} else {
 		afterLastChild := t.bitmap.selects(2) - 1
 		return Node{
-			firstChild: firstChild,
-			Children:   t.nodes[firstChild:afterLastChild],
-			Leaf:       false,
-			trie:       t,
+			firstChild:     firstChild,
+			afterLastChild: afterLastChild,
+			leaf:           false,
+			trie:           t,
 		}
 	}
 }
@@ -101,10 +102,28 @@ func (n Node) Exists() bool {
 	return n.trie != nil
 }
 
-// Next is equivalent to calling NextByte(n.Children[childIdx]), but it is faster.
+func (n Node) Size() int {
+	return n.afterLastChild - n.firstChild
+}
+
+func (n Node) Leaf() bool {
+	return n.leaf
+}
+
+func (n Node) ChildBytes() []byte {
+	if !n.Exists() {
+		return []byte{}
+	}
+
+	dst := make([]byte, n.Size())
+	copy(dst, n.trie.nodes[n.firstChild:n.afterLastChild])
+	return dst
+}
+
+// Next is equivalent to calling NextByte(n.ChildBytes()[childIdx]), but it is faster.
 // This means that if you already know the index of the next child node, you should call this function instead of NextByte.
 func (n Node) Next(childIdx int) Node {
-	if childIdx >= len(n.Children) || childIdx < 0 {
+	if childIdx >= n.afterLastChild-n.firstChild || childIdx < 0 {
 		return Node{}
 	}
 
@@ -113,25 +132,24 @@ func (n Node) Next(childIdx int) Node {
 	firstChild := n.trie.bitmap.selects(node+1) - node
 	if firstChild >= len(n.trie.nodes) {
 		return Node{
-			Children: nil,
-			Leaf:     true,
-			trie:     n.trie,
+			leaf: true,
+			trie: n.trie,
 		}
 	} else {
 		afterLastChild := n.trie.bitmap.selects(node+2) - node - 1
 		return Node{
-			firstChild: firstChild,
-			Children:   n.trie.nodes[firstChild:afterLastChild],
-			Leaf:       n.trie.leaves.getBit(node),
-			trie:       n.trie,
+			firstChild:     firstChild,
+			afterLastChild: afterLastChild,
+			leaf:           n.trie.leaves.getBit(node),
+			trie:           n.trie,
 		}
 	}
 }
 
 // NextByte returns the next node corresponding to the byte b in the trie from the current node.
-// Note that the returned node may be invalid. You must call Exists to determine its validity.
+// Note that the returned node may be invalid. You can call Exists to determine its validity.
 func (n Node) NextByte(b byte) Node {
-	return n.Next(indexByte(n.Children, b))
+	return n.Next(n.trie.indexByte(n.firstChild, n.afterLastChild, b))
 }
 
 func (n Node) Search(s string) Node {
@@ -141,21 +159,22 @@ func (n Node) Search(s string) Node {
 	return n
 }
 
-func indexByte(children []byte, b byte) int {
-	if len(children) < 13 {
-		for i := 0; i < len(children); i++ {
-			if children[i] == b {
+func (t *SuccinctTrie) indexByte(l, r int, b byte) int {
+	len := r - l
+	if len < 13 {
+		for i := 0; i < len; i++ {
+			if t.nodes[l+i] == b {
 				return i
 			}
 		}
 	} else {
-		l, r := 0, len(children)-1
+		l, r := 0, len-1
 		for l <= r {
 			k := (l + r) >> 1
-			if children[k] == b {
+			if t.nodes[l+k] == b {
 				return k
 			}
-			if children[k] > b {
+			if t.nodes[l+k] > b {
 				r = k - 1
 			} else {
 				l = k + 1
@@ -173,9 +192,9 @@ func indexByte(children []byte, b byte) int {
 // when searching for "xx.yy.zz" or "xx.yy" it will return 5, when searching for "xx" or "bb" it will return 0
 func (cur Node) SearchPrefix(key string) (lastUnmatch int) {
 	for i := 0; i < len(key); i++ {
-		if k := indexByte(cur.Children, key[i]); k != -1 {
+		if k := cur.trie.indexByte(cur.firstChild, cur.afterLastChild, key[i]); k != -1 {
 			cur = cur.Next(k)
-			if cur.Leaf {
+			if cur.leaf {
 				lastUnmatch = i + 1
 			}
 		} else {

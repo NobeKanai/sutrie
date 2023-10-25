@@ -61,12 +61,12 @@ func TestBuildSuccinctTrie(t *testing.T) {
 	assert.Equal(t, 4, trie.size)
 
 	node := trie.Root()
-	assert.Equal(t, 3, len(node.Children))
-	assert.False(t, node.Leaf)
+	assert.Equal(t, 3, node.afterLastChild-node.firstChild)
+	assert.False(t, node.leaf)
 
 	node = node.Next(0)
-	assert.Equal(t, 0, len(node.Children))
-	assert.True(t, node.Leaf)
+	assert.Equal(t, 0, node.afterLastChild-node.firstChild)
+	assert.True(t, node.leaf)
 }
 
 func TestSearchPrefixOnSuccinctTrie(t *testing.T) {
