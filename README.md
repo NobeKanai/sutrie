@@ -16,7 +16,7 @@ the dictionary
 
 ```go
 keys := []string{"hat", "is", "it", "a"}
-trie := sutrie.BuildSuccinctTrie(keys)
+trie := sutrie.BuildSuccinctTrie(keys).Root()
 
 lastUnmatch := trie.SearchPrefix("hatt")
 println(lastUnmatch) // will print 3, same if you search "hat"
