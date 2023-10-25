@@ -9,6 +9,8 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+// TODO: find a better test approach
+
 func TestBitset(t *testing.T) {
 	bs := bitset{}
 
@@ -64,7 +66,7 @@ func TestBuildSuccinctTrie(t *testing.T) {
 	assert.Equal(t, 3, node.afterLastChild-node.firstChild)
 	assert.False(t, node.leaf)
 
-	node = node.Next(0)
+	node = node.next(0)
 	assert.Equal(t, 0, node.afterLastChild-node.firstChild)
 	assert.True(t, node.leaf)
 }
