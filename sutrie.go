@@ -174,16 +174,16 @@ func (t *SuccinctTrie) indexByte(l, r int, b byte) int {
 			}
 		}
 	} else {
-		l, r := 0, len-1
-		for l <= r {
-			k := (l + r) >> 1
+		x, y := 0, len-1
+		for x <= y {
+			k := (x + y) >> 1
 			if t.nodes[l+k] == b {
 				return k
 			}
 			if t.nodes[l+k] > b {
-				r = k - 1
+				y = k - 1
 			} else {
-				l = k + 1
+				x = k + 1
 			}
 		}
 	}
