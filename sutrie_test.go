@@ -30,7 +30,7 @@ func TestBitset(t *testing.T) {
 	bs.setBit(128, true)
 	bs.setBit(127, true)
 
-	bs.initRanks()
+	bs.init()
 
 	// 4,5,127,128
 	assert.Equal(t, 1, bs.rank(4))
@@ -39,10 +39,24 @@ func TestBitset(t *testing.T) {
 	assert.Equal(t, 4, bs.rank(128))
 	assert.Equal(t, 4, bs.rank(100000))
 
-	assert.Equal(t, 4, bs.selects(1))
-	assert.Equal(t, 5, bs.selects(2))
-	assert.Equal(t, 127, bs.selects(3))
-	assert.Equal(t, 128, bs.selects(4))
+	assert.Equal(t, int32(4), bs.selects(1))
+	assert.Equal(t, int32(5), bs.selects(2))
+	assert.Equal(t, int32(127), bs.selects(3))
+	assert.Equal(t, int32(128), bs.selects(4))
+}
+
+func TestNthSet(t *testing.T) {
+	var n uint64 = 0b1010101011
+
+	assert.Equal(t, uint8(0), nthSet(n, 0))
+	assert.Equal(t, uint8(1), nthSet(n, 1))
+	assert.Equal(t, uint8(5), nthSet(n, 3))
+
+	n = 1<<64 - 1
+
+	for i := 0; i < 64; i++ {
+		assert.Equal(t, uint8(i), nthSet(n, uint8(i)))
+	}
 }
 
 func TestBuildSuccinctTrie(t *testing.T) {
@@ -63,11 +77,11 @@ func TestBuildSuccinctTrie(t *testing.T) {
 	assert.Equal(t, 4, trie.size)
 
 	node := trie.Root()
-	assert.Equal(t, 3, node.afterLastChild-node.firstChild)
+	assert.Equal(t, int32(3), node.afterLastChild-node.firstChild)
 	assert.False(t, node.leaf)
 
 	node = node.next(0)
-	assert.Equal(t, 0, node.afterLastChild-node.firstChild)
+	assert.Equal(t, int32(0), node.afterLastChild-node.firstChild)
 	assert.True(t, node.leaf)
 }
 
