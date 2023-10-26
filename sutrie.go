@@ -280,7 +280,7 @@ func (b *bitset) getBit(pos int32) bool {
 
 func (b *bitset) init() {
 	b.ranks = make([]int32, len(b.bits)+1)
-	b.sl = make([]int32, len(b.bits)+2)
+	b.sl = make([]int32, len(b.bits)/2+1+(len(b.bits)&1))
 	var t int32 = 1
 	for i := 0; i < len(b.bits); i++ {
 		n := bits.OnesCount64(b.bits[i])
