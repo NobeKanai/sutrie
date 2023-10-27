@@ -2,7 +2,9 @@ package sutrie
 
 import (
 	"bytes"
+	"crypto/rand"
 	"fmt"
+	mrand "math/rand"
 	"os"
 	"testing"
 
@@ -33,16 +35,11 @@ func TestBitset(t *testing.T) {
 	bs.init()
 
 	// 4,5,127,128
-	assert.Equal(t, 1, bs.rank(4))
-	assert.Equal(t, 2, bs.rank(5))
-	assert.Equal(t, 3, bs.rank(127))
-	assert.Equal(t, 4, bs.rank(128))
-	assert.Equal(t, 4, bs.rank(100000))
-
 	assert.Equal(t, int32(4), bs.selects(1))
 	assert.Equal(t, int32(5), bs.selects(2))
 	assert.Equal(t, int32(127), bs.selects(3))
 	assert.Equal(t, int32(128), bs.selects(4))
+	assert.Equal(t, int32(-1), bs.selects(5))
 }
 
 func TestNthSet(t *testing.T) {
@@ -63,7 +60,7 @@ func TestBuildSuccinctTrie(t *testing.T) {
 	dict := []string{"hat", "is", "it", "a"}
 	trie := BuildSuccinctTrie(dict)
 
-	assert.Equal(t, []byte{0, 'a', 'h', 'i', 'a', 's', 't', 't'}, trie.nodes)
+	assert.Equal(t, string([]byte{0, 'a', 'h', 'i', 'a', 's', 't', 't'}), trie.nodes)
 	assert.Equal(t, "11110100101100010", fmt.Sprintf("%08b", trie.bitmap.bits[0]))
 
 	assert.True(t, trie.leaves.getBit(1))
@@ -98,6 +95,46 @@ func TestSearchPrefixOnSuccinctTrie(t *testing.T) {
 
 	lastUnmatch = trie.SearchPrefix("ti")
 	assert.Equal(t, 0, lastUnmatch)
+}
+
+func randomString(length int) string {
+	x := make([]byte, length)
+	l, err := rand.Read(x)
+	if l != length || err != nil {
+		panic("failed generating random string")
+	}
+	return string(x)
+}
+
+func TestRandomSearchOnSuccinctTrie(t *testing.T) {
+	const l = 100000
+	dict := make([]string, l)
+	exists := make(map[string]struct{})
+	for i := 0; i < l; i++ {
+		dict[i] = randomString(10 + mrand.Intn(11))
+		exists[dict[i]] = struct{}{}
+	}
+
+	trie := BuildSuccinctTrie(dict).Root()
+
+	for i := 0; i < l; i++ {
+		assert.True(t, trie.Search(dict[i]).Leaf())
+	}
+
+	for i := 0; i < l; i++ {
+		rs := randomString(10 + mrand.Intn(11))
+		_, ok := exists[rs]
+		assert.Equal(t, ok, trie.Search(rs).Leaf())
+	}
+}
+
+func TestEmptyStringBehaviorSuccinctTrie(t *testing.T) {
+	trie := BuildSuccinctTrie([]string{"", "", "abc"}).Root()
+
+	assert.True(t, trie.Search("abc").Leaf())
+	assert.False(t, trie.Search("").Leaf())
+	assert.False(t, trie.Leaf())
+	assert.Equal(t, 1, trie.Size())
 }
 
 func TestMarshalBinary(t *testing.T) {

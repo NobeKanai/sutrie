@@ -10,7 +10,7 @@ import (
 type SuccinctTrie struct {
 	bitmap bitset
 	leaves bitset
-	nodes  []byte
+	nodes  string
 	size   int
 }
 
@@ -26,9 +26,7 @@ type Node struct {
 func BuildSuccinctTrie(dict []string) *SuccinctTrie {
 	sort.Strings(dict)
 
-	ret := &SuccinctTrie{
-		nodes: make([]byte, 1),
-	}
+	ret := &SuccinctTrie{}
 
 	type bfsNode struct {
 		l, r  int32
@@ -38,6 +36,7 @@ func BuildSuccinctTrie(dict []string) *SuccinctTrie {
 	zeroIdx := 1 // well this is actually one index cause that's easier
 	queue := queue[bfsNode]{}
 	queue.push(bfsNode{0, int32(len(dict)), 0})
+	nodes := make([]byte, 1)
 
 	for queue.size() > 0 {
 		cur := queue.pop()
@@ -60,11 +59,11 @@ func BuildSuccinctTrie(dict []string) *SuccinctTrie {
 			}
 			r++
 
-			ret.nodes = append(ret.nodes, dict[i][cur.depth])
+			nodes = append(nodes, dict[i][cur.depth])
 
 			// touch bottom, this is a leaf
 			if len(dict[i]) == int(cur.depth+1) {
-				ret.leaves.setBit(len(ret.nodes)-1, true)
+				ret.leaves.setBit(len(nodes)-1, true)
 				ret.size++
 			}
 
@@ -74,6 +73,7 @@ func BuildSuccinctTrie(dict []string) *SuccinctTrie {
 		}
 	}
 
+	ret.nodes = string(nodes)
 	ret.bitmap.setBit(zeroIdx, true)
 	ret.bitmap.init()
 
@@ -83,7 +83,7 @@ func BuildSuccinctTrie(dict []string) *SuccinctTrie {
 // Root returns root node of trie
 func (t *SuccinctTrie) Root() Node {
 	firstChild := t.bitmap.selects(1)
-	if firstChild >= int32(len(t.nodes)) {
+	if firstChild < 0 {
 		return Node{
 			leaf: false,
 			trie: t,
@@ -114,15 +114,9 @@ func (n Node) Leaf() bool {
 	return n.leaf
 }
 
-// ChildBytes function returns a copy of the bytes corresponding to the edges of the current node’s child nodes in the trie.
-func (n Node) ChildBytes() []byte {
-	if !n.Exists() {
-		return []byte{}
-	}
-
-	dst := make([]byte, n.Size())
-	copy(dst, n.trie.nodes[n.firstChild:n.afterLastChild])
-	return dst
+// Children function returns a string of the sorted bytes corresponding to the edges of the current node’s child nodes in the trie.
+func (n Node) Children() string {
+	return n.trie.nodes[n.firstChild:n.afterLastChild]
 }
 
 func (n Node) next(childIdx int32) Node {
@@ -133,7 +127,7 @@ func (n Node) next(childIdx int32) Node {
 	node := n.firstChild + childIdx
 
 	firstChild := n.trie.bitmap.selects(node+1) - node
-	if firstChild >= int32(len(n.trie.nodes)) {
+	if firstChild < 0 {
 		return Node{
 			leaf: true,
 			trie: n.trie,
@@ -219,7 +213,7 @@ func (t *SuccinctTrie) Size() int {
 type wrapSuccinctTrie struct {
 	BitmapBits []uint64
 	LeavesBits []uint64
-	Nodes      []byte
+	Nodes      string
 	Size       int
 }
 
@@ -279,6 +273,10 @@ func (b *bitset) getBit(pos int32) bool {
 }
 
 func (b *bitset) init() {
+	for i := len(b.bits) - 1; i >= 0 && bits.OnesCount64(b.bits[i]) == 0; i-- {
+		b.bits = b.bits[:i]
+	}
+
 	b.ranks = make([]int32, len(b.bits)+1)
 	b.sl = make([]int32, len(b.bits)/2+1+(len(b.bits)&1))
 	var t int32 = 1
@@ -293,20 +291,16 @@ func (b *bitset) init() {
 	b.sl[t] = int32(len(b.bits)) - 1
 }
 
-func (b *bitset) rank(pos int) int {
-	if pos>>6 >= len(b.bits) {
-		return int(b.ranks[len(b.ranks)-1])
+func (b *bitset) selects(nth int32) int32 {
+	if b.ranks[len(b.ranks)-1] < nth {
+		return -1
 	}
 
-	return int(b.ranks[pos>>6]) + bits.OnesCount64(b.bits[pos>>6]&(uint64(1)<<(pos&63+1)-1))
-}
-
-func (b *bitset) selects(pos int32) int32 {
-	l, r := b.sl[pos>>6], b.sl[pos>>6+1]
-	for ; l < r && b.ranks[l+1] < int32(pos); l++ {
+	l, r := b.sl[nth>>6], b.sl[nth>>6+1]
+	for ; l < r && b.ranks[l+1] < int32(nth); l++ {
 	}
 
-	return l<<6 + int32(nthSet(b.bits[l], uint8(pos-b.ranks[l]-1)))
+	return l<<6 + int32(nthSet(b.bits[l], uint8(nth-b.ranks[l]-1)))
 }
 
 const pop8tab = "" +
