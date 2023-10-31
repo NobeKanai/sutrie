@@ -82,6 +82,13 @@ func TestBuildSuccinctTrie(t *testing.T) {
 	assert.True(t, node.leaf)
 }
 
+func TestBuildEmptySuccinctTrie(t *testing.T) {
+	dict := []string{}
+	trie := BuildSuccinctTrie(dict)
+
+	assert.Equal(t, 0, trie.Size())
+}
+
 func TestSearchPrefixOnSuccinctTrie(t *testing.T) {
 	dict := []string{"hat", "is", "it", "a"}
 

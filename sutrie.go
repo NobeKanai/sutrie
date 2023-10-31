@@ -34,7 +34,7 @@ func BuildSuccinctTrie(dict []string) *SuccinctTrie {
 	}
 
 	zeroIdx := 1 // well this is actually one index cause that's easier
-	queue := newQueue[bfsNode](len(dict))
+	queue := newQueue[bfsNode](max(1, len(dict)))
 	queue.push(bfsNode{0, int32(len(dict)), 0})
 	nodes := make([]byte, 1)
 
