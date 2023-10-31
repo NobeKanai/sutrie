@@ -34,7 +34,7 @@ func BuildSuccinctTrie(dict []string) *SuccinctTrie {
 	}
 
 	zeroIdx := 1 // well this is actually one index cause that's easier
-	queue := queue[bfsNode]{}
+	queue := newQueue[bfsNode](len(dict))
 	queue.push(bfsNode{0, int32(len(dict)), 0})
 	nodes := make([]byte, 1)
 
@@ -360,21 +360,13 @@ type queue[T any] struct {
 	l, sz uint32
 }
 
-func (q *queue[T]) push(elm T) {
-	if int(q.sz) >= len(q.data) {
-		var newSize uint32
-		if q.sz > 1024 {
-			newSize = q.sz + q.sz/4
-		} else {
-			newSize = (q.sz + 1) * 2
-		}
-
-		newData := make([]T, newSize)
-		copy(newData[copy(newData, q.data[q.l:]):], q.data[:q.l])
-		q.data = newData
-		q.l = 0
+func newQueue[T any](size int) queue[T] {
+	return queue[T]{
+		data: make([]T, size),
 	}
+}
 
+func (q *queue[T]) push(elm T) {
 	q.data[int(q.l+q.sz)%len(q.data)] = elm
 	q.sz++
 }

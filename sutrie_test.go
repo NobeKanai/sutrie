@@ -228,3 +228,55 @@ func BenchmarkSearchOnSuccinctTrie(b *testing.B) {
 		trie.SearchPrefix(given[i%12])
 	}
 }
+
+func BenchmarkRandomSearchOnSuccinctTrie(b *testing.B) {
+	const l = 1000000
+	dict := make([]string, l)
+	dict2 := make([]string, l)
+	exists := make(map[string]struct{})
+	for i := 0; i < l; i++ {
+		dict[i] = randomString(10 + mrand.Intn(11))
+		exists[dict[i]] = struct{}{}
+	}
+
+	for i := 0; i < l; i++ {
+		dict2[i] = randomString(10 + mrand.Intn(11))
+		if _, ok := exists[dict2[i]]; ok {
+			i--
+		}
+	}
+
+	trie := BuildSuccinctTrie(dict).Root()
+
+	b.Run("sutrie-exists", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			if !trie.Search(dict[i%l]).Leaf() {
+				b.FailNow()
+			}
+		}
+	})
+
+	b.Run("sutrie-nonexist", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			if trie.Search(dict2[i%l]).Leaf() {
+				b.FailNow()
+			}
+		}
+	})
+
+	b.Run("map-exists", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			if _, ok := exists[dict[i%l]]; !ok {
+				b.FailNow()
+			}
+		}
+	})
+
+	b.Run("map-nonexist", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			if _, ok := exists[dict2[i%l]]; ok {
+				b.FailNow()
+			}
+		}
+	})
+}
