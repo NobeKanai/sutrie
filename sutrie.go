@@ -119,12 +119,10 @@ func (n Node) Children() string {
 	return n.trie.nodes[n.firstChild:n.afterLastChild]
 }
 
-func (n Node) next(childIdx int32) Node {
-	if childIdx >= n.afterLastChild-n.firstChild || childIdx < 0 {
+func (n Node) next(node int32) Node {
+	if node >= n.afterLastChild || node < 0 {
 		return Node{}
 	}
-
-	node := n.firstChild + childIdx
 
 	firstChild := n.trie.bitmap.selects(node+1) - node
 	if firstChild < 0 {
@@ -160,28 +158,23 @@ func (n Node) Search(s string) Node {
 }
 
 func (t *SuccinctTrie) indexByte(l, r int32, b byte) int32 {
-	len := r - l
-	if len < 13 {
-		for i := int32(0); i < len; i++ {
-			if t.nodes[l+i] == b {
-				return i
-			}
-		}
-	} else {
-		x, y := int32(0), len-1
-		for x <= y {
-			k := (x + y) >> 1
-			if t.nodes[l+k] == b {
-				return k
-			}
-			if t.nodes[l+k] > b {
-				y = k - 1
-			} else {
-				x = k + 1
-			}
+	r--
+	for r-l >= 15 {
+		k := (l + r) >> 1
+		if t.nodes[k] == b {
+			return k
+		} else if t.nodes[k] > b {
+			r = k - 1
+		} else {
+			l = k + 1
 		}
 	}
 
+	for i := l; i <= r; i++ {
+		if t.nodes[i] == b {
+			return i
+		}
+	}
 	return -1
 }
 

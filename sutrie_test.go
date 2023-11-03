@@ -77,7 +77,7 @@ func TestBuildSuccinctTrie(t *testing.T) {
 	assert.Equal(t, int32(3), node.afterLastChild-node.firstChild)
 	assert.False(t, node.leaf)
 
-	node = node.next(0)
+	node = node.next(node.firstChild)
 	assert.Equal(t, int32(0), node.afterLastChild-node.firstChild)
 	assert.True(t, node.leaf)
 }
