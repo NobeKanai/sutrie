@@ -242,6 +242,7 @@ type bitset struct {
 	bits  []uint64
 	ranks []int32
 	sl    []int32
+	mr    int32
 }
 
 func (b *bitset) setBit(pos int, value bool) {
@@ -282,14 +283,17 @@ func (b *bitset) init() {
 		}
 	}
 	b.sl[t] = int32(len(b.bits)) - 1
+	b.mr = b.ranks[len(b.ranks)-1]
 }
 
 func (b *bitset) selects(nth int32) int32 {
-	if b.ranks[len(b.ranks)-1] < nth {
+	if b.mr < nth {
 		return -1
 	}
 
 	l, r := b.sl[nth>>6], b.sl[nth>>6+1]
+	for ; l+15 < r && b.ranks[l+16] < int32(nth); l += 16 {
+	}
 	for ; l < r && b.ranks[l+1] < int32(nth); l++ {
 	}
 
@@ -328,19 +332,19 @@ func nthSet(v uint64, n uint8) uint8 {
 	p := pop8tab[v>>24&0xff] + pop8tab[v>>16&0xff] + pop8tab[v>>8&0xff] + pop8tab[v&0xff]
 	if p <= n {
 		v >>= 32
-		shift += 32
+		shift |= 32
 		n -= p
 	}
 	p = pop8tab[(v>>8)&0xff] + pop8tab[v&0xff]
 	if p <= n {
 		v >>= 16
-		shift += 16
+		shift |= 16
 		n -= p
 	}
 	p = pop8tab[v&0xff]
 	if p <= n {
-		shift += 8
 		v >>= 8
+		shift |= 8
 		n -= p
 	}
 	return precomp[uint64(n)<<8|v&0xff] + shift
