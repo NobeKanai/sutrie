@@ -2,57 +2,63 @@ package sutrie
 
 import (
 	"bytes"
-	"crypto/rand"
 	"fmt"
-	mrand "math/rand"
-	"os"
+	"math/rand"
+	"reflect"
+	"sort"
+	"strings"
 	"testing"
-
-	"github.com/stretchr/testify/assert"
 )
 
-// TODO: find a better test approach
-
 func TestBitset(t *testing.T) {
-	bs := bitset{}
+	var bs bitset
 
 	bs.setBit(4, true)
 	bs.setBit(567, true)
 
-	assert.True(t, bs.getBit(4))
-	assert.True(t, bs.getBit(567))
-	assert.False(t, bs.getBit(8))
-	assert.False(t, bs.getBit(568))
+	if !bs.getBit(4) || !bs.getBit(567) {
+		t.Fatal("set bits were not readable")
+	}
+	if bs.getBit(8) || bs.getBit(568) {
+		t.Fatal("unset bits were reported as set")
+	}
 
 	bs.setBit(567, false)
-	assert.False(t, bs.getBit(567))
-	assert.True(t, bs.getBit(4))
+	if bs.getBit(567) || !bs.getBit(4) {
+		t.Fatal("clearing a bit changed the wrong bit")
+	}
 
 	bs.setBit(5, true)
-	bs.setBit(128, true)
 	bs.setBit(127, true)
-
+	bs.setBit(128, true)
 	bs.init()
 
-	// 4,5,127,128
-	assert.Equal(t, int32(4), bs.selects(1))
-	assert.Equal(t, int32(5), bs.selects(2))
-	assert.Equal(t, int32(127), bs.selects(3))
-	assert.Equal(t, int32(128), bs.selects(4))
-	assert.Equal(t, int32(-1), bs.selects(5))
+	for nth, want := range []int32{4, 5, 127, 128} {
+		if got := bs.selects(int32(nth + 1)); got != want {
+			t.Fatalf("select(%d) = %d, want %d", nth+1, got, want)
+		}
+	}
+	if got := bs.selects(5); got != -1 {
+		t.Fatalf("select past the end = %d, want -1", got)
+	}
 }
 
 func TestNthSet(t *testing.T) {
-	var n uint64 = 0b1010101011
+	var value uint64 = 0b1010101011
+	for _, test := range []struct {
+		nth  uint8
+		want uint8
+	}{{nth: 0, want: 0}, {nth: 1, want: 1}, {nth: 3, want: 5}} {
+		if got := nthSet(value, test.nth); got != test.want {
+			t.Fatalf("nthSet(%d) = %d, want %d", test.nth, got, test.want)
+		}
+	}
 
-	assert.Equal(t, uint8(0), nthSet(n, 0))
-	assert.Equal(t, uint8(1), nthSet(n, 1))
-	assert.Equal(t, uint8(5), nthSet(n, 3))
-
-	n = 1<<64 - 1
-
+	value = 1<<64 - 1
 	for i := 0; i < 64; i++ {
-		assert.Equal(t, uint8(i), nthSet(n, uint8(i)))
+		if got := nthSet(value, uint8(i)); got != uint8(i) {
+			t.Fatalf("nthSet(all bits, %d) = %d, want %d", i, got, i)
+		}
 	}
 }
 
@@ -60,230 +66,231 @@ func TestBuildSuccinctTrie(t *testing.T) {
 	dict := []string{"hat", "is", "it", "a"}
 	trie := BuildSuccinctTrie(dict)
 
-	assert.Equal(t, string([]byte{0, 'a', 'h', 'i', 'a', 's', 't', 't'}), trie.nodes)
-	assert.Equal(t, "11110100101100010", fmt.Sprintf("%08b", trie.bitmap.bits[0]))
+	if want := []string{"a", "hat", "is", "it"}; !reflect.DeepEqual(dict, want) {
+		t.Fatalf("BuildSuccinctTrie did not sort dict in place: got %q, want %q", dict, want)
+	}
+	if got, want := trie.nodes, string([]byte{0, 'a', 'h', 'i', 'a', 's', 't', 't'}); got != want {
+		t.Fatalf("nodes = %q, want %q", got, want)
+	}
+	if got, want := fmt.Sprintf("%08b", trie.bitmap.bits[0]), "11110100101100010"; got != want {
+		t.Fatalf("bitmap = %s, want %s", got, want)
+	}
 
-	assert.True(t, trie.leaves.getBit(1))
-	assert.False(t, trie.leaves.getBit(2))
-	assert.False(t, trie.leaves.getBit(3))
-	assert.False(t, trie.leaves.getBit(4))
-	assert.True(t, trie.leaves.getBit(5))
-	assert.True(t, trie.leaves.getBit(6))
-	assert.True(t, trie.leaves.getBit(7))
+	for pos, want := range map[int32]bool{1: true, 2: false, 3: false, 4: false, 5: true, 6: true, 7: true} {
+		if got := trie.leaves.getBit(pos); got != want {
+			t.Fatalf("leaf bit %d = %t, want %t", pos, got, want)
+		}
+	}
+	if trie.size != 4 {
+		t.Fatalf("size = %d, want 4", trie.size)
+	}
 
-	assert.Equal(t, 4, trie.size)
+	root := trie.Root()
+	if got := root.Size(); got != 3 {
+		t.Fatalf("root size = %d, want 3", got)
+	}
+	if root.Leaf() {
+		t.Fatal("root unexpectedly marked as a leaf")
+	}
 
-	node := trie.Root()
-	assert.Equal(t, int32(3), node.afterLastChild-node.firstChild)
-	assert.False(t, node.leaf)
+	first := root.next(root.firstChild)
+	if first.Size() != 0 || !first.Leaf() {
+		t.Fatalf("first child = %+v, want a leaf without children", first)
+	}
+}
 
-	node = node.next(node.firstChild)
-	assert.Equal(t, int32(0), node.afterLastChild-node.firstChild)
-	assert.True(t, node.leaf)
+func TestBuildSuccinctTrieSorted(t *testing.T) {
+	dict := []string{"a", "hat", "is", "it"}
+	before := append([]string(nil), dict...)
+	trie := BuildSuccinctTrieSorted(dict)
+
+	if !reflect.DeepEqual(dict, before) {
+		t.Fatalf("BuildSuccinctTrieSorted changed dict: got %q, want %q", dict, before)
+	}
+	if trie.Size() != 4 || !trie.Root().Search("hat").Leaf() {
+		t.Fatalf("sorted builder produced an invalid trie")
+	}
 }
 
 func TestBuildEmptySuccinctTrie(t *testing.T) {
-	dict := []string{}
-	trie := BuildSuccinctTrie(dict)
-
-	assert.Equal(t, 0, trie.Size())
+	for _, dict := range [][]string{nil, {}, {"", "", ""}} {
+		trie := BuildSuccinctTrie(dict)
+		if trie.Size() != 0 {
+			t.Fatalf("BuildSuccinctTrie(%q).Size() = %d, want 0", dict, trie.Size())
+		}
+		if trie.Root().Children() != "" {
+			t.Fatalf("empty trie has children: %q", trie.Root().Children())
+		}
+	}
 }
 
 func TestSearchPrefixOnSuccinctTrie(t *testing.T) {
-	dict := []string{"hat", "is", "it", "a"}
+	root := BuildSuccinctTrie([]string{"hat", "is", "it", "a"}).Root()
 
-	trie := BuildSuccinctTrie(dict).Root()
-
-	lastUnmatch := trie.SearchPrefix("hat")
-	assert.Equal(t, 3, lastUnmatch)
-
-	lastUnmatch = trie.SearchPrefix("iss")
-	assert.Equal(t, 2, lastUnmatch)
-
-	lastUnmatch = trie.SearchPrefix("ti")
-	assert.Equal(t, 0, lastUnmatch)
+	for _, test := range []struct {
+		key  string
+		want int
+	}{
+		{key: "hat", want: 3},
+		{key: "hatt", want: 3},
+		{key: "iss", want: 2},
+		{key: "ti", want: 0},
+		{key: "a", want: 1},
+	} {
+		if got := root.SearchPrefix(test.key); got != test.want {
+			t.Errorf("SearchPrefix(%q) = %d, want %d", test.key, got, test.want)
+		}
+	}
 }
 
-func randomString(length int) string {
-	x := make([]byte, length)
-	l, err := rand.Read(x)
-	if l != length || err != nil {
-		panic("failed generating random string")
+func TestSearchAndChildren(t *testing.T) {
+	root := BuildSuccinctTrie([]string{"car", "cat", "dog"}).Root()
+
+	if got := root.Children(); got != "cd" {
+		t.Fatalf("root children = %q, want %q", got, "cd")
 	}
-	return string(x)
+	for _, test := range []struct {
+		key  string
+		leaf bool
+	}{
+		{key: "car", leaf: true},
+		{key: "cat", leaf: true},
+		{key: "ca", leaf: false},
+		{key: "can", leaf: false},
+		{key: "dog", leaf: true},
+		{key: "dove", leaf: false},
+	} {
+		node := root.Search(test.key)
+		if got := node.Exists() && node.Leaf(); got != test.leaf {
+			t.Errorf("Search(%q) leaf = %t, want %t", test.key, got, test.leaf)
+		}
+	}
+}
+
+func TestDuplicateAndEmptyStringBehavior(t *testing.T) {
+	root := BuildSuccinctTrie([]string{"", "", "abc", "abc", "ab"}).Root()
+
+	if root.Search("").Leaf() {
+		t.Fatal("empty string should not be represented as a leaf")
+	}
+	if !root.Search("abc").Leaf() || !root.Search("ab").Leaf() {
+		t.Fatal("non-empty entries were not represented as leaves")
+	}
+	if got := root.trie.Size(); got != 2 {
+		t.Fatalf("Size() = %d, want 2 unique non-empty entries", got)
+	}
 }
 
 func TestRandomSearchOnSuccinctTrie(t *testing.T) {
-	const l = 100000
-	dict := make([]string, l)
-	exists := make(map[string]struct{})
-	for i := 0; i < l; i++ {
-		dict[i] = randomString(10 + mrand.Intn(11))
-		exists[dict[i]] = struct{}{}
+	rng := rand.New(rand.NewSource(42))
+	const count = 20_000
+
+	dict := make([]string, count)
+	exists := make(map[string]struct{}, count)
+	for i := range dict {
+		for {
+			candidate := randomString(rng, 10+rng.Intn(11))
+			if _, ok := exists[candidate]; ok {
+				continue
+			}
+			dict[i] = candidate
+			exists[candidate] = struct{}{}
+			break
+		}
 	}
 
-	trie := BuildSuccinctTrie(dict).Root()
-
-	for i := 0; i < l; i++ {
-		assert.True(t, trie.Search(dict[i]).Leaf())
+	root := BuildSuccinctTrie(dict).Root()
+	for key := range exists {
+		if !root.Search(key).Leaf() {
+			t.Fatalf("Search(%q) did not find an inserted key", key)
+		}
 	}
-
-	for i := 0; i < l; i++ {
-		rs := randomString(10 + mrand.Intn(11))
-		_, ok := exists[rs]
-		assert.Equal(t, ok, trie.Search(rs).Leaf())
+	for i := 0; i < count; i++ {
+		key := fmt.Sprintf("missing-%08d", i)
+		if root.Search(key).Leaf() {
+			t.Fatalf("Search(%q) found a key that was not inserted", key)
+		}
 	}
-}
-
-func TestEmptyStringBehaviorSuccinctTrie(t *testing.T) {
-	trie := BuildSuccinctTrie([]string{"", "", "abc"}).Root()
-
-	assert.True(t, trie.Search("abc").Leaf())
-	assert.False(t, trie.Search("").Leaf())
-	assert.False(t, trie.Leaf())
-	assert.Equal(t, 1, trie.Size())
 }
 
 func TestMarshalBinary(t *testing.T) {
+	keys := []string{"hat", "is", "it", "a", "中文"}
+	trie := BuildSuccinctTrie(append([]string(nil), keys...))
+
 	var buf bytes.Buffer
-
-	dict := []string{"hat", "is", "it", "a", "中文"}
-	trie := BuildSuccinctTrie(dict)
-
-	err := trie.Marshal(&buf)
-	if err != nil {
-		assert.FailNow(t, "failed to marshal trie to binary")
+	if err := trie.Marshal(&buf); err != nil {
+		t.Fatalf("Marshal() failed: %v", err)
 	}
 
-	var decTrie SuccinctTrie
-	err = decTrie.Unmarshal(&buf)
-	if err != nil {
-		assert.FailNow(t, "failed to unmarshal binary to trie")
+	var decoded SuccinctTrie
+	if err := decoded.Unmarshal(&buf); err != nil {
+		t.Fatalf("Unmarshal() failed: %v", err)
+	}
+	if decoded.Size() != trie.Size() {
+		t.Fatalf("decoded size = %d, want %d", decoded.Size(), trie.Size())
 	}
 
-	assert.Equal(t, 5, decTrie.size)
-
-	root := trie.Root()
-
-	lastUnmatch := root.SearchPrefix("hat")
-	assert.Equal(t, 3, lastUnmatch)
-
-	lastUnmatch = root.SearchPrefix("iss")
-	assert.Equal(t, 2, lastUnmatch)
-
-	lastUnmatch = root.SearchPrefix("ti")
-	assert.Equal(t, 0, lastUnmatch)
-}
-
-func loadLocalDomains() (ret []string) {
-	bytes, err := os.ReadFile("domains.txt")
-	if err != nil {
-		panic(err)
-	}
-
-	for i := 0; i < len(bytes); {
-		j := i + 1
-		for j < len(bytes) && bytes[j] != '\n' {
-			j++
+	root := decoded.Root()
+	for _, key := range keys {
+		if !root.Search(key).Leaf() {
+			t.Fatalf("decoded trie did not find %q", key)
 		}
-
-		d := bytes[i:j]
-		for i2, j2 := 0, len(d)-1; i2 < j2; i2, j2 = i2+1, j2-1 {
-			d[i2], d[j2] = d[j2], d[i2]
-		}
-
-		ret = append(ret, string(d))
-		i = j + 1
 	}
-
-	return
-}
-
-func BenchmarkBuildSuccinctTrie(b *testing.B) {
-	domains := loadLocalDomains()
-
-	b.ResetTimer()
-	b.ReportAllocs()
-
-	for i := 0; i < b.N; i++ {
-		BuildSuccinctTrie(domains)
+	if got := root.SearchPrefix("iss"); got != 2 {
+		t.Fatalf("decoded SearchPrefix(iss) = %d, want 2", got)
 	}
 }
 
-func BenchmarkSearchOnSuccinctTrie(b *testing.B) {
-	domains := loadLocalDomains()
-	trie := BuildSuccinctTrie(domains).Root()
-
-	given := []string{
-		"xxx.twitter.com",
-		"bilibili.com",
-		"example.top",
-		"blog.example.top",
-		"cdn.ark.qq.com",
-		"google.com",
-		"img.yandex.com",
-		"fuuxkxkfjsdfsdf.ddddddd.com",
-		"www.example.com",
-		"a.b.c.d.e.f.g.h",
-		"abc.def",
-		"a.b.c.d.e.f.google.com",
-	}
-
-	b.ResetTimer()
-	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
-		trie.SearchPrefix(given[i%12])
+func TestUnmarshalRejectsInvalidData(t *testing.T) {
+	var trie SuccinctTrie
+	if err := trie.Unmarshal(strings.NewReader("not a gob")); err == nil {
+		t.Fatal("Unmarshal accepted invalid data")
 	}
 }
 
-func BenchmarkRandomSearchOnSuccinctTrie(b *testing.B) {
-	const l = 1000000
-	dict := make([]string, l)
-	dict2 := make([]string, l)
-	exists := make(map[string]struct{})
-	for i := 0; i < l; i++ {
-		dict[i] = randomString(10 + mrand.Intn(11))
-		exists[dict[i]] = struct{}{}
+func FuzzBuildAndSearch(f *testing.F) {
+	for _, seed := range []string{"a\x00ab\x00", "www.example.com\x00example.com", ""} {
+		f.Add(seed)
 	}
 
-	for i := 0; i < l; i++ {
-		dict2[i] = randomString(10 + mrand.Intn(11))
-		if _, ok := exists[dict2[i]]; ok {
-			i--
+	f.Fuzz(func(t *testing.T, input string) {
+		if len(input) > 4096 {
+			t.Skip()
 		}
+		keys := strings.Split(input, "\x00")
+		expected := make(map[string]struct{}, len(keys))
+		for _, key := range keys {
+			if key != "" {
+				expected[key] = struct{}{}
+			}
+		}
+
+		root := BuildSuccinctTrie(keys).Root()
+		for key := range expected {
+			if !root.Search(key).Leaf() {
+				t.Fatalf("Search(%q) did not find an inserted key", key)
+			}
+		}
+	})
+}
+
+func randomString(rng *rand.Rand, length int) string {
+	const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789.-_"
+	buf := make([]byte, length)
+	for i := range buf {
+		buf[i] = alphabet[rng.Intn(len(alphabet))]
 	}
+	return string(buf)
+}
 
-	trie := BuildSuccinctTrie(dict).Root()
+func TestSortedBuilderMatchesSortingBuilder(t *testing.T) {
+	unsorted := []string{"z", "a", "alpha", "alphabet", ""}
+	sorted := append([]string(nil), unsorted...)
+	sort.Strings(sorted)
 
-	b.Run("sutrie-exists", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
-			if !trie.Search(dict[i%l]).Leaf() {
-				b.FailNow()
-			}
-		}
-	})
-
-	b.Run("sutrie-nonexist", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
-			if trie.Search(dict2[i%l]).Leaf() {
-				b.FailNow()
-			}
-		}
-	})
-
-	b.Run("map-exists", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
-			if _, ok := exists[dict[i%l]]; !ok {
-				b.FailNow()
-			}
-		}
-	})
-
-	b.Run("map-nonexist", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
-			if _, ok := exists[dict2[i%l]]; ok {
-				b.FailNow()
-			}
-		}
-	})
+	got := BuildSuccinctTrieSorted(sorted)
+	want := BuildSuccinctTrie(append([]string(nil), unsorted...))
+	if !reflect.DeepEqual(got, want) {
+		t.Fatal("sorted and sorting builders produced different tries")
+	}
 }

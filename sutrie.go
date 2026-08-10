@@ -7,6 +7,8 @@ import (
 	"sort"
 )
 
+// SuccinctTrie is an immutable, succinct representation of a byte-oriented
+// prefix tree. Construct one with BuildSuccinctTrie or BuildSuccinctTrieSorted.
 type SuccinctTrie struct {
 	bitmap bitset
 	leaves bitset
@@ -14,6 +16,8 @@ type SuccinctTrie struct {
 	size   int
 }
 
+// Node is a read-only handle for a trie node. A zero Node is invalid; use
+// Exists to check a node returned by a conditional traversal.
 type Node struct {
 	trie           *SuccinctTrie
 	firstChild     int32
@@ -22,9 +26,20 @@ type Node struct {
 }
 
 // BuildSuccinctTrie constructs an immutable, succinct prefix tree/trie data structure.
-// You can traverse the tree from root node, but you cannot modify it.
+//
+// BuildSuccinctTrie sorts dict in place before constructing the trie. Pass a copy
+// when the caller needs to preserve the original order. Use
+// BuildSuccinctTrieSorted when dict is already sorted and should not be sorted again.
 func BuildSuccinctTrie(dict []string) *SuccinctTrie {
 	sort.Strings(dict)
+	return BuildSuccinctTrieSorted(dict)
+}
+
+// BuildSuccinctTrieSorted constructs an immutable, succinct prefix tree/trie data
+// structure from dict. dict must be sorted in ascending lexicographic order using
+// the same ordering as sort.Strings. The input slice is read but not reordered.
+// You can traverse the tree from root node, but you cannot modify it.
+func BuildSuccinctTrieSorted(dict []string) *SuccinctTrie {
 
 	ret := &SuccinctTrie{}
 
@@ -80,7 +95,7 @@ func BuildSuccinctTrie(dict []string) *SuccinctTrie {
 	return ret
 }
 
-// Root returns root node of trie
+// Root returns the root node of the trie.
 func (t *SuccinctTrie) Root() Node {
 	firstChild := t.bitmap.selects(1)
 	if firstChild < 0 {
@@ -99,22 +114,22 @@ func (t *SuccinctTrie) Root() Node {
 	}
 }
 
-// Exists returns the validity of the current node.
+// Exists reports whether n refers to a node in a trie.
 func (n Node) Exists() bool {
 	return n.trie != nil
 }
 
-// Size returns the number of child nodes of the current node.
+// Size returns the number of immediate child nodes of n.
 func (n Node) Size() int {
 	return int(n.afterLastChild - n.firstChild)
 }
 
-// Leaf returns whether the current node is a leaf node, that is, whether the current node corresponds to a complete entry.
+// Leaf reports whether n corresponds to a complete dictionary entry.
 func (n Node) Leaf() bool {
 	return n.leaf
 }
 
-// Children function returns a string of the sorted bytes corresponding to the edges of the current node’s child nodes in the trie.
+// Children returns the sorted edge bytes for n's immediate child nodes.
 func (n Node) Children() string {
 	return n.trie.nodes[n.firstChild:n.afterLastChild]
 }
@@ -141,15 +156,14 @@ func (n Node) next(node int32) Node {
 	}
 }
 
-// Next returns the next node corresponding to the byte b in the trie from the current node.
-// Note that the returned node may be invalid. You can call Exists to determine its validity.
+// Next returns the child reached by byte b. The returned node may be invalid;
+// call Exists to determine whether the edge was present.
 func (n Node) Next(b byte) Node {
 	return n.next(n.trie.indexByte(n.firstChild, n.afterLastChild, b))
 }
 
-// Search is simply a wrapper around the Next function.
-// It iterates through each byte in the string s within the trie,
-// and returns the final node (note that the node may be a null node).
+// Search follows every byte in s and returns the final node. The returned node
+// may be invalid when s is not present in the trie.
 func (n Node) Search(s string) Node {
 	for i := 0; i < len(s) && n.Exists(); i++ {
 		n = n.Next(s[i])
@@ -178,17 +192,16 @@ func (t *SuccinctTrie) indexByte(l, r int32, b byte) int32 {
 	return -1
 }
 
-// SearchPrefix searches the trie for the prefix of the key and returns the last index that does not match.
-// When the match is a full match, the return value is equal to the length of the key, and similarly,
-// when the return value is 0, it means that there is no match at all.
-// For example, suppose there is an entry "xx.yy" in the trie,
-// when searching for "xx.yy.zz" or "xx.yy" it will return 5, when searching for "xx" or "bb" it will return 0
-func (cur Node) SearchPrefix(key string) (lastUnmatch int) {
+// SearchPrefix returns the length of the longest stored entry that is a prefix
+// of key. It returns len(key) for a full match and zero when no stored entry is
+// a prefix. For example, an entry "xx.yy" returns 5 for "xx.yy" and
+// "xx.yy.zz", but returns 0 for "xx" and "bb".
+func (cur Node) SearchPrefix(key string) (matchedLength int) {
 	for i := 0; i < len(key); i++ {
 		if k := cur.trie.indexByte(cur.firstChild, cur.afterLastChild, key[i]); k != -1 {
 			cur = cur.next(k)
 			if cur.leaf {
-				lastUnmatch = i + 1
+				matchedLength = i + 1
 			}
 		} else {
 			break
@@ -198,7 +211,7 @@ func (cur Node) SearchPrefix(key string) (lastUnmatch int) {
 	return
 }
 
-// Size returns number of leaves in trie
+// Size returns the number of unique, non-empty dictionary entries in the trie.
 func (t *SuccinctTrie) Size() int {
 	return t.size
 }
@@ -210,6 +223,7 @@ type wrapSuccinctTrie struct {
 	Size       int
 }
 
+// Marshal writes the trie to writer using encoding/gob.
 func (v *SuccinctTrie) Marshal(writer io.Writer) error {
 	w := wrapSuccinctTrie{v.bitmap.bits, v.leaves.bits, v.nodes, v.size}
 
@@ -217,6 +231,7 @@ func (v *SuccinctTrie) Marshal(writer io.Writer) error {
 	return enc.Encode(w)
 }
 
+// Unmarshal replaces v with a trie decoded from reader.
 func (v *SuccinctTrie) Unmarshal(reader io.Reader) error {
 	w := wrapSuccinctTrie{}
 
