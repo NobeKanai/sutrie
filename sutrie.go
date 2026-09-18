@@ -43,6 +43,11 @@ func BuildSuccinctTrieSorted(dict []string) *SuccinctTrie {
 
 	ret := &SuccinctTrie{}
 
+	if len(dict) > 0 && dict[0] == "" {
+		ret.leaves.setBit(0, true)
+		ret.size++
+	}
+
 	type bfsNode struct {
 		l, r  int32
 		depth int32
@@ -100,7 +105,7 @@ func (t *SuccinctTrie) Root() Node {
 	firstChild := t.bitmap.selects(1)
 	if firstChild < 0 {
 		return Node{
-			leaf: false,
+			leaf: t.leaves.getBit(0),
 			trie: t,
 		}
 	} else {
@@ -108,7 +113,7 @@ func (t *SuccinctTrie) Root() Node {
 		return Node{
 			firstChild:     firstChild,
 			afterLastChild: afterLastChild,
-			leaf:           false,
+			leaf:           t.leaves.getBit(0),
 			trie:           t,
 		}
 	}
@@ -211,7 +216,7 @@ func (cur Node) SearchPrefix(key string) (matchedLength int) {
 	return
 }
 
-// Size returns the number of unique, non-empty dictionary entries in the trie.
+// Size returns the number of unique dictionary entries in the trie.
 func (t *SuccinctTrie) Size() int {
 	return t.size
 }

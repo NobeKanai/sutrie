@@ -50,7 +50,7 @@ _ = trie
 
 `BuildSuccinctTrieSorted(dict)` is the lower-overhead entry point for callers that already maintain sorted input. The slice must be in ascending lexicographic order according to `sort.Strings`; the function does not validate or reorder it. Passing unsorted input violates the function contract and can produce an invalid trie.
 
-Both builders ignore empty strings and collapse duplicate entries. `SuccinctTrie.Size` reports the number of unique, non-empty entries. The trie operates on bytes, so strings are traversed as their UTF-8 byte representation rather than as Unicode code points.
+The trie operates on bytes, so strings are traversed as their UTF-8 byte representation rather than as Unicode code points.
 
 ## Traversal
 

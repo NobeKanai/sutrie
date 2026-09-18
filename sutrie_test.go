@@ -113,7 +113,7 @@ func TestBuildSuccinctTrieSorted(t *testing.T) {
 }
 
 func TestBuildEmptySuccinctTrie(t *testing.T) {
-	for _, dict := range [][]string{nil, {}, {"", "", ""}} {
+	for _, dict := range [][]string{nil, {}} {
 		trie := BuildSuccinctTrie(dict)
 		if trie.Size() != 0 {
 			t.Fatalf("BuildSuccinctTrie(%q).Size() = %d, want 0", dict, trie.Size())
@@ -121,6 +121,20 @@ func TestBuildEmptySuccinctTrie(t *testing.T) {
 		if trie.Root().Children() != "" {
 			t.Fatalf("empty trie has children: %q", trie.Root().Children())
 		}
+	}
+}
+
+func TestBuildAllEmptySuccinctTrie(t *testing.T) {
+	trie := BuildSuccinctTrie([]string{"", "", ""})
+	if trie.Size() != 1 {
+		t.Fatalf("all-empty trie Size() = %d, want 1", trie.Size())
+	}
+	root := trie.Root()
+	if !root.Leaf() || !root.Search("").Leaf() {
+		t.Fatal("empty string was not represented as the root leaf")
+	}
+	if root.Children() != "" {
+		t.Fatalf("all-empty trie has children: %q", root.Children())
 	}
 }
 
@@ -170,14 +184,14 @@ func TestSearchAndChildren(t *testing.T) {
 func TestDuplicateAndEmptyStringBehavior(t *testing.T) {
 	root := BuildSuccinctTrie([]string{"", "", "abc", "abc", "ab"}).Root()
 
-	if root.Search("").Leaf() {
-		t.Fatal("empty string should not be represented as a leaf")
+	if !root.Search("").Leaf() {
+		t.Fatal("empty string should be represented as a leaf")
 	}
 	if !root.Search("abc").Leaf() || !root.Search("ab").Leaf() {
 		t.Fatal("non-empty entries were not represented as leaves")
 	}
-	if got := root.trie.Size(); got != 2 {
-		t.Fatalf("Size() = %d, want 2 unique non-empty entries", got)
+	if got := root.trie.Size(); got != 3 {
+		t.Fatalf("Size() = %d, want 3 unique entries including empty string", got)
 	}
 }
 
@@ -260,9 +274,7 @@ func FuzzBuildAndSearch(f *testing.F) {
 		keys := strings.Split(input, "\x00")
 		expected := make(map[string]struct{}, len(keys))
 		for _, key := range keys {
-			if key != "" {
-				expected[key] = struct{}{}
-			}
+			expected[key] = struct{}{}
 		}
 
 		root := BuildSuccinctTrie(keys).Root()
